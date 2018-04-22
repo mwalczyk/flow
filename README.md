@@ -1,14 +1,8 @@
-# vkstarter
-🔨 Simple starter code for building applications with Vulkan and C++.
-
-<p>
-  <img src="https://github.com/mwalczyk/vkstarter/blob/master/screenshots/screenshot.png" alt="screenshot" width="300" height="auto"/>
-</p>
+# flow
+🔮 A GPU-based progressive path tracer written in Vulkan. 
 
 ## Description
-This is meant to be a sort of "template" for creating Vulkan applications. It uses `vulkan.hpp`, which is included in LunarG's Vulkan SDK. Note that there are many checks and features that are omitted in this project that would otherwise be present in a "real" application. 
-
-By default, `vkstarter` simply sets up a full-screen quad, as seen in the screenshot above. For simplicity sake, vertex positions are hard-coded in the vertex shader. Push constants are used to communicate application time and window resolution to the fragment shader stage. Window resizing (and subsequent swapchain re-creation) is also enabled by default.
+Built from 
 
 ## Tested On
 Windows 8.1, NVIDIA GeForce GTX 970M, `1.1.70.1` Vulkan SDK with Visual Studio 2015.
