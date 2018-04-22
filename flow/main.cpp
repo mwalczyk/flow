@@ -423,18 +423,53 @@ public:
 	
 	void initialize_ping_pong_images()
 	{
-		// We want to create 2 floating-point images that can be used as both color attachments (i.e. render targets) and combined image samplers
+		const auto ping_pong_format = vk::Format::eR32G32B32A32Sfloat;
+
+		// We want to create two floating-point images that can be used as both color attachments (i.e. render targets) and combined image samplers
 		auto image_create_info = vk::ImageCreateInfo{}
 			.setImageType(vk::ImageType::e2D)
-			.setFormat(vk::Format::eR32G32B32A32Sfloat)
+			.setFormat(ping_pong_format)
 			.setExtent({ width, height, 1 })
 			.setMipLevels(1)
 			.setArrayLayers(1)
 			.setUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled);
 
-		auto image_a = device->createImageUnique(image_create_info);
-		auto image_b = device->createImageUnique(image_create_info);
+		image_a = device->createImageUnique(image_create_info);
+		image_b = device->createImageUnique(image_create_info);
 		LOG_DEBUG("Created images for ping-ponging");
+
+		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+		auto image_view_create_info = vk::ImageViewCreateInfo{}
+			.setImage(image_a.get())
+			.setViewType(vk::ImageViewType::e2D)
+			.setFormat(ping_pong_format)
+			.setSubresourceRange(subresource_range);
+
+		// The `memoryTypeBits` field is a bitmask that contains one bit set for every supported memory type of the resource - bit `i` is set if and only if the
+		// memory type `i` in the `vk::PhysicalDeviceMemoryProperties` structure for the physical device is supported for the resource
+		auto memory_requirements = device->getImageMemoryRequirements(image_a.get());
+		
+		auto memory_properties = physical_device.getMemoryProperties();
+		
+		for (size_t i = 0; i < memory_properties.memoryTypeCount; ++i)
+		{	
+
+		}
+		auto memory_allocation_info = vk::MemoryAllocateInfo{}
+			.setAllocationSize(memory_requirements.size)
+			.setMemoryTypeIndex(0); // TODO
+
+		device_memory_ab = device->allocateMemoryUnique(memory_allocation_info);
+
+		const vk::DeviceSize offset = 0;
+		device->bindImageMemory(image_a.get(), device_memory_ab.get(), offset);
+
+		// Create two image views
+		//auto image_view_a = device->createImageViewUnique(image_view_create_info);
+		
+		//image_view_create_info.setImage(image_b.get());
+		//auto image_view_b = device->createImageViewUnique(image_view_create_info);
 	}
 
 	void draw()
@@ -497,6 +532,10 @@ private:
 	std::vector<vk::UniqueFramebuffer> framebuffers;
 	std::vector<vk::UniqueCommandBuffer> command_buffers;
 	std::vector<vk::UniqueFence> fences;
+
+	vk::UniqueImage image_a;
+	vk::UniqueImage image_b;
+	vk::UniqueDeviceMemory device_memory_ab;
 };
 
 int main()
