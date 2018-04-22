@@ -93,6 +93,9 @@ public:
 	Application(uint32_t width, uint32_t height, const std::string& name) :
 		width{ width }, height{ height }, name{ name }
 	{
+		ping_pong_image_format = vk::Format::eR32G32B32A32Sfloat;
+		swapchain_image_format = vk::Format::eB8G8R8A8Unorm;
+
 		setup();
 	}
 
@@ -146,12 +149,14 @@ public:
 		initialize_render_pass();
 		initialize_descriptor_set_layout();
 		initialize_pipeline();
+		
+		initialize_ping_pong_images();
+		
 		initialize_framebuffers();
 		initialize_command_pool();
 		initialize_command_buffers();
 		initialize_synchronization_primitives();
 
-		initialize_ping_pong_images();
 		initialize_descriptor_pool();
 		initialize_sampler();
 		initialize_descriptor_set();
@@ -239,7 +244,6 @@ public:
 		surface_present_modes = physical_device.getSurfacePresentModesKHR(surface.get());
 		auto surface_support = physical_device.getSurfaceSupportKHR(queue_family_index, surface.get());
 
-		swapchain_image_format = vk::Format::eB8G8R8A8Unorm;
 		swapchain_extent = vk::Extent2D{ width, height };
 
 		auto swapchain_create_info = vk::SwapchainCreateInfoKHR{}
@@ -273,7 +277,28 @@ public:
 
 	void initialize_render_pass()
 	{
-		auto attachment_description = vk::AttachmentDescription{}
+		// The image that will be sampled (either A or B)
+		auto ping_attachment_description = vk::AttachmentDescription{}
+			.setFormat(ping_pong_image_format)
+			.setLoadOp(vk::AttachmentLoadOp::eLoad) // TODO: is this correct?
+			.setStoreOp(vk::AttachmentStoreOp::eStore)
+			.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+			.setInitialLayout(vk::ImageLayout::eShaderReadOnlyOptimal) // When the renderpass begins, this will be read by a shader
+			.setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal); // When the renderpass ends, transition this to a color attachment
+
+		// The image that will be rendered into (either A or B)
+		auto pong_attachment_description = vk::AttachmentDescription{}
+			.setFormat(ping_pong_image_format)
+			.setLoadOp(vk::AttachmentLoadOp::eClear)
+			.setStoreOp(vk::AttachmentStoreOp::eStore)
+			.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+			.setInitialLayout(vk::ImageLayout::eColorAttachmentOptimal) // When the renderpass begins, this will be a color attachment
+			.setFinalLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // When the renderpass ends, transition this to shader read-only 
+
+		// The final image that will be show on the screen
+		auto swapchain_attachment_description = vk::AttachmentDescription{}
 			.setFormat(swapchain_image_format)
 			.setLoadOp(vk::AttachmentLoadOp::eClear)
 			.setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -281,12 +306,20 @@ public:
 			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
 			.setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
 
+		vk::AttachmentDescription all_attachment_descriptions[3] = { 
+			ping_attachment_description,
+			pong_attachment_description, 
+			swapchain_attachment_description 
+		};
+
 		const uint32_t attachment_index = 0;
 		auto attachment_reference = vk::AttachmentReference{ attachment_index, vk::ImageLayout::eColorAttachmentOptimal };
 
 		auto subpass_description = vk::SubpassDescription{}
 			.setPColorAttachments(&attachment_reference)
 			.setColorAttachmentCount(1);
+
+		// TODO: add subpass that uses the back-buffer as an input attachment
 
 		auto subpass_dependency = vk::SubpassDependency{}
 			.setSrcSubpass(VK_SUBPASS_EXTERNAL)
@@ -296,7 +329,7 @@ public:
 			.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
 			.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
-		auto render_pass_create_info = vk::RenderPassCreateInfo{ {}, 1, &attachment_description, 1, &subpass_description, 1, &subpass_dependency };
+		auto render_pass_create_info = vk::RenderPassCreateInfo{ {}, 1, &swapchain_attachment_description, 1, &subpass_description, 1, &subpass_dependency };
 
 		render_pass = device->createRenderPassUnique(render_pass_create_info);
 	}
@@ -398,6 +431,56 @@ public:
 		pipeline = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
 		LOG_DEBUG("Created graphics pipeline");
 	}
+	
+	void initialize_ping_pong_images()
+	{
+		// We want to create two floating-point images that can be used as both color attachments (i.e. render targets) and combined image samplers
+		auto image_create_info = vk::ImageCreateInfo{}
+			.setImageType(vk::ImageType::e2D)
+			.setFormat(ping_pong_image_format)
+			.setExtent({ width, height, 1 })
+			.setMipLevels(1)
+			.setArrayLayers(1)
+			.setUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled);
+
+		image_a = device->createImageUnique(image_create_info);
+		image_b = device->createImageUnique(image_create_info);
+		LOG_DEBUG("Created images for ping-ponging");
+
+		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+		auto image_view_create_info = vk::ImageViewCreateInfo{}
+			.setImage(image_a.get())
+			.setViewType(vk::ImageViewType::e2D)
+			.setFormat(ping_pong_image_format)
+			.setSubresourceRange(subresource_range);
+
+		// The `memoryTypeBits` field is a bitmask that contains one bit set for every supported memory type of the resource - bit `i` is set if and only if the
+		// memory type `i` in the `vk::PhysicalDeviceMemoryProperties` structure for the physical device is supported for the resource
+		auto memory_requirements_a = device->getImageMemoryRequirements(image_a.get());
+		auto memory_requirements_b = device->getImageMemoryRequirements(image_b.get());
+
+		auto memory_properties = physical_device.getMemoryProperties();
+		for (size_t i = 0; i < memory_properties.memoryTypeCount; ++i)
+		{	
+			// TODO
+		}
+
+		// Allocate the device memory that will be shared between the two images
+		auto total_memory_size = memory_requirements_a.size + memory_requirements_b.size;
+		auto memory_allocation_info = vk::MemoryAllocateInfo{ total_memory_size, 1 /* TODO: this should not be hardcoded */ };
+		device_memory_ab = device->allocateMemoryUnique(memory_allocation_info);
+
+		// Bind the device memory to each of the two images, with the appropriate offsets
+		const vk::DeviceSize offset = memory_requirements_a.size;
+		device->bindImageMemory(image_a.get(), device_memory_ab.get(), 0);
+		device->bindImageMemory(image_b.get(), device_memory_ab.get(), offset);
+
+		// Create two image views
+		image_view_a = device->createImageViewUnique(image_view_create_info);
+		image_view_create_info.setImage(image_b.get());
+		image_view_b = device->createImageViewUnique(image_view_create_info);
+	}
 
 	void initialize_framebuffers()
 	{
@@ -428,12 +511,12 @@ public:
 		const vk::ClearValue clear = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
 		const vk::Rect2D render_area{ { 0, 0 }, swapchain_extent };
 
-		PushConstants push_constants = 		
-		{ 
-			get_elapsed_time(), 
+		PushConstants push_constants =
+		{
+			get_elapsed_time(),
 			0.0f,  /* Padding */
-			static_cast<float>(width), 
-			static_cast<float>(height) 
+			static_cast<float>(width),
+			static_cast<float>(height)
 		};
 
 		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
@@ -442,14 +525,18 @@ public:
 
 		if (index % 2 == 0)
 		{
+			// Image A is the back-buffer (i.e. will be read in the shader)
+			// Image B will be rendered into
 			command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set_a.get(), {});
 		}
 		else
 		{
+			// Image B is the back-buffer (i.e. will be read in the shader)
+			// Image A will be rendered into
 			command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set_b.get(), {});
 
 		}
-		
+
 		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
 		command_buffers[index]->draw(6, 1, 0, 0);
 		command_buffers[index]->endRenderPass();
@@ -462,62 +549,10 @@ public:
 		sempahore_render_finished = device->createSemaphoreUnique({});
 
 		for (size_t i = 0; i < command_buffers.size(); ++i)
-		{			
+		{
 			// Create each fence in a signaled state, so that the first call to `waitForFences` in the draw loop doesn't throw any errors
 			fences.push_back(device->createFenceUnique({ vk::FenceCreateFlagBits::eSignaled }));
 		}
-	}
-	
-	void initialize_ping_pong_images()
-	{
-		const auto ping_pong_format = vk::Format::eR32G32B32A32Sfloat;
-
-		// We want to create two floating-point images that can be used as both color attachments (i.e. render targets) and combined image samplers
-		auto image_create_info = vk::ImageCreateInfo{}
-			.setImageType(vk::ImageType::e2D)
-			.setFormat(ping_pong_format)
-			.setExtent({ width, height, 1 })
-			.setMipLevels(1)
-			.setArrayLayers(1)
-			.setUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled);
-
-		image_a = device->createImageUnique(image_create_info);
-		image_b = device->createImageUnique(image_create_info);
-		LOG_DEBUG("Created images for ping-ponging");
-
-		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-
-		auto image_view_create_info = vk::ImageViewCreateInfo{}
-			.setImage(image_a.get())
-			.setViewType(vk::ImageViewType::e2D)
-			.setFormat(ping_pong_format)
-			.setSubresourceRange(subresource_range);
-
-		// The `memoryTypeBits` field is a bitmask that contains one bit set for every supported memory type of the resource - bit `i` is set if and only if the
-		// memory type `i` in the `vk::PhysicalDeviceMemoryProperties` structure for the physical device is supported for the resource
-		auto memory_requirements_a = device->getImageMemoryRequirements(image_a.get());
-		auto memory_requirements_b = device->getImageMemoryRequirements(image_b.get());
-
-		auto memory_properties = physical_device.getMemoryProperties();
-		for (size_t i = 0; i < memory_properties.memoryTypeCount; ++i)
-		{	
-			// TODO
-		}
-
-		// Allocate the device memory that will be shared between the two images
-		auto total_memory_size = memory_requirements_a.size + memory_requirements_b.size;
-		auto memory_allocation_info = vk::MemoryAllocateInfo{ total_memory_size, 1 /* TODO: this should not be hardcoded */ };
-		device_memory_ab = device->allocateMemoryUnique(memory_allocation_info);
-
-		// Bind the device memory to each of the two images, with the appropriate offsets
-		const vk::DeviceSize offset = memory_requirements_a.size;
-		device->bindImageMemory(image_a.get(), device_memory_ab.get(), 0);
-		device->bindImageMemory(image_b.get(), device_memory_ab.get(), offset);
-
-		// Create two image views
-		image_view_a = device->createImageViewUnique(image_view_create_info);
-		image_view_create_info.setImage(image_b.get());
-		image_view_b = device->createImageViewUnique(image_view_create_info);
 	}
 
 	void initialize_descriptor_pool()
@@ -658,7 +693,9 @@ private:
 	std::vector<vk::SurfaceFormatKHR> surface_formats;
 	std::vector<vk::PresentModeKHR> surface_present_modes;
 
+	vk::Format ping_pong_image_format;
 	vk::Format swapchain_image_format;
+
 	vk::Extent2D swapchain_extent;
 
 	vk::PhysicalDevice physical_device;
@@ -696,7 +733,7 @@ private:
 	vk::UniqueSampler sampler;
 
 	// Least common multiple of the number of swapchain images (3) and number of ping-pong buffers (2)
-	std::array<vk::UniqueFramebuffer, 6> ping_pong_framebuffers;
+	std::array<std::array<vk::UniqueFramebuffer, 2>, 3> ping_pong_framebuffers;
 };
 
 int main()
