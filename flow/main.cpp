@@ -439,7 +439,17 @@ public:
 		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
 		command_buffers[index]->beginRenderPass(vk::RenderPassBeginInfo{ render_pass.get(), framebuffers[index].get(), render_area, 1, &clear }, vk::SubpassContents::eInline);
 		command_buffers[index]->bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get());
-		command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set.get(), {});
+
+		if (index % 2 == 0)
+		{
+			command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set_a.get(), {});
+		}
+		else
+		{
+			command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set_b.get(), {});
+
+		}
+		
 		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
 		command_buffers[index]->draw(6, 1, 0, 0);
 		command_buffers[index]->endRenderPass();
@@ -515,7 +525,8 @@ public:
 		const uint32_t count = 1;
 		auto descriptor_pool_size = vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, count };
 		
-		const uint32_t max_sets = 1;
+		// We need a unique descriptor set for each ping-pong image, although they will share the same layout
+		const uint32_t max_sets = 2;
 		auto descriptor_pool_create_info = vk::DescriptorPoolCreateInfo{ {}, max_sets, 1, &descriptor_pool_size };
 		
 		descriptor_pool = device->createDescriptorPoolUnique(descriptor_pool_create_info);
@@ -524,9 +535,11 @@ public:
 
 	void initialize_sampler()
 	{
-		auto sampler_create_info = vk::SamplerCreateInfo{ /* TODO */};
+		auto sampler_create_info = vk::SamplerCreateInfo{}
+			.setMinFilter(vk::Filter::eLinear)
+			.setMagFilter(vk::Filter::eLinear);
 
-		sampler = device->createSamplerUnique({});
+		sampler = device->createSamplerUnique(sampler_create_info);
 	}
 
 	void initialize_descriptor_set()
@@ -534,20 +547,38 @@ public:
 		// We allocate descriptors from the descriptor pool created above
 		auto descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo{ descriptor_pool.get(), 1, &descriptor_set_layout.get() };
 
-		descriptor_set = std::move(device->allocateDescriptorSetsUnique(descriptor_set_allocate_info)[0]);
+		descriptor_set_a = std::move(device->allocateDescriptorSetsUnique(descriptor_set_allocate_info)[0]);
+		descriptor_set_b = std::move(device->allocateDescriptorSetsUnique(descriptor_set_allocate_info)[0]);
 		LOG_DEBUG("Allocated descriptor set(s)");
 
-		// Now, write to the descriptor set
-		auto descriptor_image_info = vk::DescriptorImageInfo{ sampler.get(), image_view_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal };
+		// Write to descriptor set A
+		{
+			auto descriptor_image_info_a = vk::DescriptorImageInfo{ sampler.get(), image_view_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal };
 
-		auto write_descriptor_set = vk::WriteDescriptorSet{}
-			.setDescriptorCount(1)
-			.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-			.setDstBinding(0)
-			.setDstSet(descriptor_set.get())
-			.setPImageInfo(&descriptor_image_info);
+			auto write_descriptor_set = vk::WriteDescriptorSet{}
+				.setDescriptorCount(1)
+				.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+				.setDstBinding(0)
+				.setDstSet(descriptor_set_a.get())
+				.setPImageInfo(&descriptor_image_info_a);
 
-		device->updateDescriptorSets(write_descriptor_set, {});
+			device->updateDescriptorSets(write_descriptor_set, {});
+		}
+
+		// Write to descriptor set B
+		{
+			auto descriptor_image_info_b = vk::DescriptorImageInfo{ sampler.get(), image_view_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal };
+
+			auto write_descriptor_set = vk::WriteDescriptorSet{}
+				.setDescriptorCount(1)
+				.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+				.setDstBinding(0)
+				.setDstSet(descriptor_set_b.get())
+				.setPImageInfo(&descriptor_image_info_b);
+
+			device->updateDescriptorSets(write_descriptor_set, {});
+		}
+
 		LOG_DEBUG("Wrote descriptor set(s)");
 	}
 
@@ -571,12 +602,20 @@ public:
 
 	void clear_ping_pong_images()
 	{
-		const vk::ClearColorValue clear = std::array<float, 4>{ 1.0f, 0.0f, 0.0f, 1.0f };
+		const vk::ClearColorValue red = std::array<float, 4>{ 1.0f, 0.0f, 0.0f, 1.0f };
+		const vk::ClearColorValue green = std::array<float, 4>{ 0.0f, 1.0f, 0.0f, 1.0f };
 		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
+		// Clear A
 		one_time_commands([&](const auto& command_buffer) {
-			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, clear, subresource_range);
+			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, red, subresource_range);
 		});
+
+		// Clear B
+		one_time_commands([&](const auto& command_buffer) {
+			command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eUndefined, green, subresource_range);
+		});
+
 		LOG_DEBUG("Cleared images");
 	}
 
@@ -652,8 +691,12 @@ private:
 
 	vk::UniqueDescriptorSetLayout descriptor_set_layout;
 	vk::UniqueDescriptorPool descriptor_pool;
-	vk::UniqueDescriptorSet descriptor_set;
+	vk::UniqueDescriptorSet descriptor_set_a;
+	vk::UniqueDescriptorSet descriptor_set_b;
 	vk::UniqueSampler sampler;
+
+	// Least common multiple of the number of swapchain images (3) and number of ping-pong buffers (2)
+	std::array<vk::UniqueFramebuffer, 6> ping_pong_framebuffers;
 };
 
 int main()
