@@ -2,7 +2,7 @@
 🔮 A GPU-based progressive path tracer written in Vulkan. 
 
 ## Description
-Built from 
+Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
 ## Tested On
 Windows 8.1, NVIDIA GeForce GTX 970M, `1.1.70.1` Vulkan SDK with Visual Studio 2015.
