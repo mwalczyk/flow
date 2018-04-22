@@ -448,28 +448,29 @@ public:
 
 		// The `memoryTypeBits` field is a bitmask that contains one bit set for every supported memory type of the resource - bit `i` is set if and only if the
 		// memory type `i` in the `vk::PhysicalDeviceMemoryProperties` structure for the physical device is supported for the resource
-		auto memory_requirements = device->getImageMemoryRequirements(image_a.get());
-		
+		auto memory_requirements_a = device->getImageMemoryRequirements(image_a.get());
+		auto memory_requirements_b = device->getImageMemoryRequirements(image_b.get());
+
 		auto memory_properties = physical_device.getMemoryProperties();
-		
 		for (size_t i = 0; i < memory_properties.memoryTypeCount; ++i)
 		{	
-
+			// TODO
 		}
-		auto memory_allocation_info = vk::MemoryAllocateInfo{}
-			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(0); // TODO
 
+		// Allocate the device memory that will be shared between the two images
+		auto total_memory_size = memory_requirements_a.size + memory_requirements_b.size;
+		auto memory_allocation_info = vk::MemoryAllocateInfo{ total_memory_size, 1 /* TODO: this should not be hardcoded */ };
 		device_memory_ab = device->allocateMemoryUnique(memory_allocation_info);
 
-		const vk::DeviceSize offset = 0;
-		device->bindImageMemory(image_a.get(), device_memory_ab.get(), offset);
+		// Bind the device memory to each of the two images, with the appropriate offsets
+		const vk::DeviceSize offset = memory_requirements_a.size;
+		device->bindImageMemory(image_a.get(), device_memory_ab.get(), 0);
+		device->bindImageMemory(image_b.get(), device_memory_ab.get(), offset);
 
 		// Create two image views
-		//auto image_view_a = device->createImageViewUnique(image_view_create_info);
-		
-		//image_view_create_info.setImage(image_b.get());
-		//auto image_view_b = device->createImageViewUnique(image_view_create_info);
+		image_view_a = device->createImageViewUnique(image_view_create_info);
+		image_view_create_info.setImage(image_b.get());
+		image_view_b = device->createImageViewUnique(image_view_create_info);
 	}
 
 	void draw()
@@ -536,6 +537,8 @@ private:
 	vk::UniqueImage image_a;
 	vk::UniqueImage image_b;
 	vk::UniqueDeviceMemory device_memory_ab;
+	vk::UniqueImageView image_view_a;
+	vk::UniqueImageView image_view_b;
 };
 
 int main()
