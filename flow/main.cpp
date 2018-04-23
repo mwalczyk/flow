@@ -143,7 +143,16 @@ public:
 
 		swapchain.reset();
 		render_pass.reset();
+		pipeline_pathtrace.reset();
 		pipeline_composite.reset();
+
+		device_memory_ab.reset();
+		descriptor_set_a.reset();
+		descriptor_set_b.reset();
+		image_a.reset();
+		image_b.reset();
+		image_view_a.reset();
+		image_view_b.reset();
 
 		// We do not need to explicitly clear the framebuffers or swapchain image views, since that is taken
 		// care of by the `initialize_*()` methods below
@@ -151,6 +160,8 @@ public:
 		initialize_swapchain();
 		initialize_render_pass();
 		initialize_pipelines();
+		initialize_ping_pong_images();
+		initialize_descriptor_sets();
 		initialize_framebuffers();
 	}
 
@@ -304,8 +315,10 @@ public:
 			.setStoreOp(vk::AttachmentStoreOp::eStore)
 			.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
 			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
-			.setInitialLayout(vk::ImageLayout::eColorAttachmentOptimal) // When the renderpass begins, this will be a color attachment
-			.setFinalLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // When the renderpass ends, transition this to shader read-only 
+			.setInitialLayout(vk::ImageLayout::eGeneral) 
+			.setFinalLayout(vk::ImageLayout::eGeneral); 
+		// TODO: the layouts above don't seem correct: when the renderpass begins, the image should be a color attachment and when it
+		// ends, it should be shader read-only
 
 		// The final image that will be show on the screen
 		auto attachment_description_swap = vk::AttachmentDescription{}
@@ -469,28 +482,25 @@ public:
 			.setPAttachments(&color_blend_attachment_state)
 			.setAttachmentCount(1);
 
-		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo{ 
-			{}, 
-			2, 
-			shader_stage_create_infos, 
-			&vertex_input_state_create_info,
-			&input_assembly_create_info, 
-			nullptr, /* Add tessellation state here */
-			&viewport_state_create_info, 
-			&rasterization_state_create_info,
-			&multisample_state_create_info, 
-			nullptr, /* Add depth stencil state here */
-			&color_blend_state_create_info, 
-			nullptr, /* Add dynamic state here */ 
-			pipeline_layout.get(), 
-			render_pass.get() 
-		};
+		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo{}
+			.setPStages(shader_stage_create_infos)
+			.setStageCount(2)
+			.setPVertexInputState(&vertex_input_state_create_info)
+			.setPInputAssemblyState(&input_assembly_create_info)
+			.setPViewportState(&viewport_state_create_info)
+			.setPRasterizationState(&rasterization_state_create_info)
+			.setPMultisampleState(&multisample_state_create_info)
+			.setPColorBlendState(&color_blend_state_create_info)
+			.setLayout(pipeline_layout.get())
+			.setRenderPass(render_pass.get())
+			.setSubpass(0);
 
 		// Create the pipeline for pathtracing
 		pipeline_pathtrace = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
 
-		// Switch the fragment shader module
+		// Switch the fragment shader module and subpass index
 		shader_stage_create_infos[1] = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_composite.get(), entry_point };
+		graphics_pipeline_create_info.setSubpass(1);
 		pipeline_composite = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
 
 		LOG_DEBUG("Created graphics pipelines");
@@ -507,7 +517,8 @@ public:
 			.setArrayLayers(1)
 			.setUsage(vk::ImageUsageFlagBits::eColorAttachment | 
 					  vk::ImageUsageFlagBits::eSampled | 
-					  vk::ImageUsageFlagBits::eInputAttachment /* Required for second subpass */);
+					  vk::ImageUsageFlagBits::eInputAttachment | /* Required for second subpass */
+					  vk::ImageUsageFlagBits::eTransferDst /* Required for the clear color command to work */);
 
 		image_a = device->createImageUnique(image_create_info);
 		image_b = device->createImageUnique(image_create_info);
@@ -682,10 +693,29 @@ public:
 
 		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
+		auto image_memory_barrier = vk::ImageMemoryBarrier{}
+			.setSrcAccessMask({})
+			.setDstAccessMask({})
+			.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+			.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+			.setOldLayout(vk::ImageLayout::eUndefined)
+			.setNewLayout(vk::ImageLayout::eGeneral)
+			.setSubresourceRange(subresource_range)
+			.setImage(image_a.get());
+
+		one_time_commands([&](const vk::UniqueCommandBuffer& command_buffer) {
+			command_buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTopOfPipe, {}, {}, {}, image_memory_barrier);
+
+			image_memory_barrier.setImage(image_b.get());
+
+			command_buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTopOfPipe, {}, {}, {}, image_memory_barrier);
+		});
+
 		// Clear both A and B
 		one_time_commands([&](const auto& command_buffer) {
-			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, black, subresource_range);
-			command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eUndefined, black, subresource_range);
+			// Both images are now in `vk::ImageLayout::eGeneral`, due to the pipeline barrier above
+			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eGeneral, black, subresource_range);
+			command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eGeneral, black, subresource_range);
 		});
 
 		LOG_DEBUG("Cleared images");
@@ -694,13 +724,17 @@ public:
 	void initialize_descriptor_pool()
 	{
 		vk::DescriptorPoolSize descriptor_pool_sizes[2] = {
-			vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 1 },
-			vk::DescriptorPoolSize{ vk::DescriptorType::eInputAttachment, 1 }
+			vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 2 },
+			vk::DescriptorPoolSize{ vk::DescriptorType::eInputAttachment, 2 }
 		};
 		
 		// We need a unique descriptor set for each ping-pong image, although they will share the same layout
 		const uint32_t max_sets = 2;
-		auto descriptor_pool_create_info = vk::DescriptorPoolCreateInfo{ {}, max_sets, 2, descriptor_pool_sizes };
+		auto descriptor_pool_create_info = vk::DescriptorPoolCreateInfo{ 
+			vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, /* Needed during swapchain resize (which subsequently re-allocates descriptor sets) */
+			max_sets, 
+			2, descriptor_pool_sizes 
+		};
 		
 		descriptor_pool = device->createDescriptorPoolUnique(descriptor_pool_create_info);
 		LOG_DEBUG("Created descriptor pool with [ " << max_sets << " ] possible allocations");
