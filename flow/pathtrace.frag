@@ -409,6 +409,7 @@ vec3 trace()
 		for (uint i = 0; i < number_of_bounces; ++i)
 		{	
 			intersection itr = intersect_scene(r);
+			vec3 incident = r.direction;
 
 			// Per-bounce random seed
 			const vec2 seed = gl_FragCoord.xy + i + j * 100.0;
@@ -420,6 +421,11 @@ vec3 trace()
 			switch(itr.object_type)
 			{
 			case object_type_sphere:
+
+				if (itr.object_index == 1)
+				{
+					r.direction = scatter_metallic(itr.position, incident, itr.normal, seed, 1.0);
+				}
 
 				accumulated *= 2.0 * spheres[itr.object_index].albedo;
 				break;
