@@ -3,6 +3,7 @@
 #include <fstream>
 #include <limits>
 #include <chrono>
+#include <functional>
 
 #define NOMINMAX
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -550,21 +551,32 @@ public:
 		LOG_DEBUG("Wrote descriptor set(s)");
 	}
 
+	void one_time_commands(std::function<void(vk::UniqueCommandBuffer const &)> func)
+	{
+		auto command_buffer = std::move(device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, 1 })[0]);
+		
+		// Record user-defined commands in between begin/end
+		command_buffer->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
+		func(command_buffer);
+		command_buffer->end();
+
+		auto submit_info = vk::SubmitInfo{}
+			.setPCommandBuffers(&command_buffer.get())
+			.setCommandBufferCount(1);
+
+		// One time submit, so wait idle here for the work to complete
+		queue.submit(submit_info, {});
+		queue.waitIdle();
+	}
+
 	void clear_ping_pong_images()
 	{
 		const vk::ClearColorValue clear = std::array<float, 4>{ 1.0f, 0.0f, 0.0f, 1.0f };
 		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
-		auto command_buffer = std::move(device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, 1 })[0]);
-
-		command_buffer->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
-		command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, clear, subresource_range);
-		command_buffer->end();
-
-		// One time submit, so wait idle here for the work to complete
-		auto submit_info = vk::SubmitInfo{ 0, {}, {}, 1, &command_buffer.get()};
-		queue.submit(submit_info, {});
-		queue.waitIdle();
+		one_time_commands([&](const auto& command_buffer) {
+			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, clear, subresource_range);
+		});
 		LOG_DEBUG("Cleared images");
 	}
 
