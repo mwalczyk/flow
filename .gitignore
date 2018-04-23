@@ -6,7 +6,7 @@
 # Custom
 build/
 third_party/
-vkstarter/*.spv
+flow/*.spv
 
 # User-specific files
 *.suo
