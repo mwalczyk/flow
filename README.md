@@ -1,6 +1,10 @@
 # flow
 🔮 A GPU-based progressive path tracer written in Vulkan. 
 
+<p>
+  <img src="https://github.com/mwalczyk/flow/blob/master/screenshots/screenshot.png" alt="screenshot" width="300" height="auto"/>
+</p>
+
 ## Description
 Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
