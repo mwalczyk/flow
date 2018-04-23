@@ -9,12 +9,14 @@ layout(push_constant) uniform PushConstants
 	float frame_counter;
 	vec2 resolution;
 	vec2 cursor_position;
+	float mouse_down;
 } push_constants;
 
 layout(location = 0) out vec4 o_color;
 
 const float pi = 3.1415926535897932384626433832795;
 const float gamma = 1.0 / 2.2;
+const uint number_of_iterations = 5;
 const uint number_of_bounces = 5;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
@@ -98,7 +100,7 @@ float rand_stable(vec2 seed)
 
 float rand_dynamic(vec2 seed) 
 {
-    return fract(sin(dot(seed, vec2(12.9898, 78.233) + push_constants.frame_counter)) * 43758.5453);
+    return fract(sin(dot(seed, vec2(12.9898, 78.233) + push_constants.time)) * 43758.5453);
 }
 
 mat3 lookat(in vec3 t, in vec3 p)
@@ -178,9 +180,10 @@ const uint number_of_planes = 4;
 
 sphere spheres[] = {
 	sphere(100.0, vec3(0.0, 100.9, 0.0), vec3(1.0, 0.8, 0.8)), // Ground
-	//sphere(0.55, vec3(-1.1, 0.25, -1.1), vec3(0.55)),
-	//sphere(0.20, vec3( 1.0, 0.25, -1.6), vec3(0.55)),
-	sphere(1.5, vec3( 0.0, -0.75,  0.0), vec3(0.75, 0.75, 0.6))
+	
+	sphere(0.55, vec3(-1.4, 0.4, -1.3), vec3(0.9, 0.8, 0.1)),
+	sphere(0.20, vec3( 1.0, 0.7, -1.6), vec3(0.9, 0.1, 0.2)),
+	sphere(1.5, vec3(0.0, -0.6,  0.0), vec3(0.75, 0.75, 0.6))
 };
 
 plane planes[] = {
@@ -382,71 +385,74 @@ intersection intersect_scene(in ray r)
 vec3 trace()
 {
 	vec2 uv = (gl_FragCoord.xy / push_constants.resolution) * 2.0 - 1.0;
-	vec2 jitter = vec2(rand_dynamic(uv), rand_dynamic(uv + 100.0));
-	uv += (jitter / push_constants.resolution) * 2.0;
+	vec3 final = black;
 
-	// Calculate the ray 
-	vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 4.0;
-	vec3 camera_position = vec3(0.0, -2.0, -4.0) + offset;
-	vec3 ro = camera_position;
-	vec3 rd = normalize(lookat(origin, ro) * vec3(uv, 1.0));
-	ray r = ray(ro, rd);
+	for (uint j = 0; j < number_of_iterations; ++j)
+	{
+		// Reconstruct the ray with a random offset (anti-aliasing)
+		vec2 jitter = vec2(rand_dynamic(uv + j), rand_dynamic(uv + j + 100.0));
+		uv += (jitter / push_constants.resolution);
 
-	// Colors
-	vec3 sky = black;
-	vec3 color = black;
-	vec3 accumulated = white;
+		// Calculate the ray 
+		vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 4.0;
+		vec3 camera_position = vec3(0.0, -2.0, -4.0) + offset;
+		vec3 ro = camera_position;
+		vec3 rd = normalize(lookat(origin, ro) * vec3(uv, 1.0));
+		ray r = ray(ro, rd);
 
-	// Main path tracing loop
-	for (uint i = 0; i < number_of_bounces; ++i)
-	{	
-		intersection itr = intersect_scene(r);
+		// Colors
+		vec3 sky = black;
+		vec3 color = black;
+		vec3 accumulated = white;
 
-		const vec3 incident = r.direction;
-		const vec2 seed = gl_FragCoord.xy + i;
+		// Main path tracing loop
+		for (uint i = 0; i < number_of_bounces; ++i)
+		{	
+			intersection itr = intersect_scene(r);
 
-		vec3 bounce = scatter_diffuse(itr.position, incident, itr.normal, seed);
-		r.origin = itr.position + itr.normal * epsilon;
-		r.direction = bounce;
+			// Per-bounce random seed
+			const vec2 seed = gl_FragCoord.xy + i + j * 100.0;
 
-		switch(itr.object_type)
-		{
-		case object_type_sphere:
+			vec3 bounce = scatter_diffuse(itr.position, r.direction, itr.normal, seed);
+			r.origin = itr.position + itr.normal * epsilon;
+			r.direction = bounce;
 
-			if (itr.object_index > 0)
+			switch(itr.object_type)
 			{
-				float roughness = rand_stable(vec2(itr.object_index));
-				r.direction = scatter_metallic(itr.position, incident, itr.normal, seed, 0.98);
-			}
-			
-			accumulated *= 2.0 * spheres[itr.object_index].albedo;
-			break;
+			case object_type_sphere:
 
-		case object_type_plane:
-			
-			// The back plane is emissive
-			if (itr.object_index == 0) 
-			{	
-				float pct = step(1.0, mod(itr.position.x * 2.0 + 0.5, 2.0)); 
-				vec3 emissive = palette(itr.position.x * 0.1, 
-					vec3(0.5, 0.5, 0.5), 
-					vec3(0.5, 0.5, 0.5), 
-					vec3(1.0, 1.0, 1.0), 
-					vec3(0.00, 0.33, 0.67));
+				accumulated *= 2.0 * spheres[itr.object_index].albedo;
+				break;
+
+			case object_type_plane:
 				
-				color += emissive * 1.0 * accumulated * pct;
+				// The back plane is emissive
+				if (itr.object_index == 0) 
+				{	
+					float pct = step(1.0, mod(itr.position.x * 2.0 + 0.5, 2.0)); 
+					vec3 emissive = palette(itr.position.x * 0.1, 
+											vec3(0.5, 0.5, 0.5), 
+											vec3(0.5, 0.5, 0.5), 
+											vec3(1.0, 1.0, 1.0), 
+											vec3(0.00, 0.33, 0.67));
+					
+					color += emissive * accumulated * pct;
+				}
+
+				accumulated *= 2.0 * planes[itr.object_index].albedo;
+				break;
+
+			case object_type_miss:
+
+				color += accumulated * sky;
+				break;
 			}
-
-			accumulated *= 2.0 * planes[itr.object_index].albedo;
-			break;
-
-		case object_type_miss:
-
-			color += accumulated * sky;
-			break;
 		}
+
+		final += color;
 	}
-	return color;
+
+	return final / float(number_of_iterations);
 }
 
 void main()
@@ -461,5 +467,12 @@ void main()
 	vec3 prev_frame = texture(u_image, uv).rgb;
 	vec3 curr_frame = trace_color;
 
-    o_color = vec4(prev_frame + curr_frame, 1.0);
+	if (push_constants.mouse_down == 1.0)
+	{
+		o_color = vec4(curr_frame, 1.0);
+	}
+	else
+	{
+		o_color = vec4(prev_frame + curr_frame, 1.0);
+	}
 }

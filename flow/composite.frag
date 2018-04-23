@@ -9,6 +9,7 @@ layout(push_constant) uniform PushConstants
 	float frame_counter;
 	vec2 resolution;
 	vec2 cursor_position;
+	float mouse_down;
 } push_constants;
 
 layout(location = 0) out vec4 o_color;
@@ -20,7 +21,7 @@ void main()
 	vec3 total = subpassLoad(u_accumulated).rgb;
 
 	// Normalize the HDR input
-	if (push_constants.frame_counter > 0.0)
+	if (push_constants.mouse_down != 1.0)
 	{
 		total /= push_constants.frame_counter + 1.0;
 	}

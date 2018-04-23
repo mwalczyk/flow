@@ -25,6 +25,7 @@ struct alignas(8) PushConstants
 	float frame_counter;
 	float resolution[2];
 	float mouse[2];
+	float mouse_down;
 	/* Add more members here: mind the struct alignment */
 };
 
@@ -95,10 +96,10 @@ public:
 		width{ width }, 
 		height{ height }, 
 		name{ name }, 
-		frame_counter{ 0 },
+		samples_per_pixel{ 0 },
+		total_frames_elapsed{ 0 },
 		swapchain_image_format{ vk::Format::eB8G8R8A8Unorm },
-		ping_pong_image_format{ vk::Format::eR32G32B32A32Sfloat },
-		dirty{ false }
+		ping_pong_image_format{ vk::Format::eR32G32B32A32Sfloat }
 	{
 		setup();
 	}
@@ -126,13 +127,7 @@ public:
 			Application* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
 			app->cursor_position[0] = static_cast<float>(xpos) / static_cast<float>(app->width);
 			app->cursor_position[1] = static_cast<float>(ypos) / static_cast<float>(app->height);
-			app->needs_update();
 		}
-	}
-
-	void needs_update()
-	{
-		dirty = true;
 	}
 
 	void resize()
@@ -598,39 +593,30 @@ public:
 			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }
 		};
 
-		int frame_offset = (frame_counter % 2 == 0) ? 0: 1;
+		int frame_offset = (total_frames_elapsed % 2 == 0) ? 0: 1;
 
 		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
 		command_buffers[index]->beginRenderPass(vk::RenderPassBeginInfo{ render_pass.get(), ping_pong_framebuffers[index * 2 + frame_offset].get(), render_area, 2, clear_values }, vk::SubpassContents::eInline);
 	
-		if (dirty)
+		// TODO: this does not work if it is a bool?
+		float mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ? 1.0f : 0.0f;
+
+		if (mouse_down == 1.0f)
 		{
-			const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
-			const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-
-			// Clear the back-buffer
-			if (frame_offset == 0)
-			{
-				command_buffers[index]->clearColorImage(image_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
-			}
-			else
-			{
-				command_buffers[index]->clearColorImage(image_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
-			}
-
-			frame_counter = 0;
-			dirty = false;
+			samples_per_pixel = 0;
 		}
 
 		PushConstants push_constants =
 		{
 			get_elapsed_time(),
-			static_cast<float>(frame_counter),
+			static_cast<float>(samples_per_pixel),
 			static_cast<float>(width),
 			static_cast<float>(height),
 			cursor_position[0],
-			cursor_position[1]
+			cursor_position[1],
+			mouse_down
 		};
+
 		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
 
 		if (frame_offset == 0)
@@ -812,7 +798,8 @@ public:
 			auto present_info = vk::PresentInfoKHR{ 1, &sempahore_render_finished.get(), 1, &swapchain.get(), &index };
 			queue.presentKHR(present_info);
 
-			frame_counter++;
+			samples_per_pixel++;
+			total_frames_elapsed++;
 		}
 	}
 
@@ -820,9 +807,9 @@ private:
 	uint32_t width;
 	uint32_t height;
 	std::string name;
-	uint32_t frame_counter;
+	uint32_t samples_per_pixel;
+	uint32_t total_frames_elapsed;
 	float cursor_position[2];
-	bool dirty;
 
 	GLFWwindow* window;
 
