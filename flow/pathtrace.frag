@@ -384,7 +384,10 @@ intersection intersect_scene(in ray r)
 
 vec3 trace()
 {
+	float aspect_ratio = push_constants.resolution.x / push_constants.resolution.y;
 	vec2 uv = (gl_FragCoord.xy / push_constants.resolution) * 2.0 - 1.0;
+	uv.x *= aspect_ratio;
+
 	vec3 final = black;
 
 	for (uint j = 0; j < number_of_iterations; ++j)
