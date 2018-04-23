@@ -8,6 +8,7 @@ layout(push_constant) uniform PushConstants
 	float time;
 	float frame_counter;
 	vec2 resolution;
+	vec2 cursor_position;
 } push_constants;
 
 layout(location = 0) out vec4 o_color;
@@ -18,5 +19,16 @@ void main()
 
 	vec3 total = subpassLoad(u_rendered).rgb;
 
+	// Normalize
+	// if (push_constants.frame_counter > 0.0)
+	// {
+	// 	total /= push_constants.frame_counter + 1.0;
+	// }
+
+	//if (push_constants.frame_counter > 2.0)
+	{
+		total /= push_constants.frame_counter + 4.0;
+	}
+	
     o_color = vec4(total, 1.0);
 }

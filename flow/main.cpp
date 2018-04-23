@@ -24,6 +24,7 @@ struct alignas(8) PushConstants
 	float time;
 	float frame_counter;
 	float resolution[2];
+	float mouse[2];
 	/* Add more members here: mind the struct alignment */
 };
 
@@ -91,12 +92,14 @@ class Application
 {
 public:
 	Application(uint32_t width, uint32_t height, const std::string& name) :
-		width{ width }, height{ height }, name{ name }
+		width{ width }, 
+		height{ height }, 
+		name{ name }, 
+		frame_counter{ 0 },
+		swapchain_image_format{ vk::Format::eB8G8R8A8Unorm },
+		ping_pong_image_format{ vk::Format::eR32G32B32A32Sfloat },
+		dirty{ false }
 	{
-		ping_pong_image_format = vk::Format::eR32G32B32A32Sfloat;
-		swapchain_image_format = vk::Format::eB8G8R8A8Unorm;
-		frame_counter = 0;
-
 		setup();
 	}
 
@@ -114,6 +117,22 @@ public:
 	{
 		Application* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
 		app->resize();
+	}
+
+	static void on_cursor_moved(GLFWwindow* window, double xpos, double ypos)
+	{
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+		{
+			Application* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+			app->cursor_position[0] = static_cast<float>(xpos) / static_cast<float>(app->width);
+			app->cursor_position[1] = static_cast<float>(ypos) / static_cast<float>(app->height);
+			app->needs_update();
+		}
+	}
+
+	void needs_update()
+	{
+		dirty = true;
 	}
 
 	void resize()
@@ -166,7 +185,7 @@ public:
 		// Descriptors
 		initialize_descriptor_pool();
 		initialize_sampler();
-		initialize_descriptor_set();
+		initialize_descriptor_sets();
 	}
 
 	void initialize_window()
@@ -178,6 +197,7 @@ public:
 
 		glfwSetWindowUserPointer(window, this);
 		glfwSetWindowSizeCallback(window, on_window_resized);
+		glfwSetCursorPosCallback(window, on_cursor_moved);
 	}
 
 	void initialize_instance()
@@ -283,7 +303,7 @@ public:
 	void initialize_render_pass()
 	{
 		// The image that will be rendered into (either A or B)
-		auto pong_attachment_description = vk::AttachmentDescription{}
+		auto attachment_description_pong = vk::AttachmentDescription{}
 			.setFormat(ping_pong_image_format)
 			.setLoadOp(vk::AttachmentLoadOp::eLoad) // Don't erase what was previously drawn into this attachment
 			.setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -293,7 +313,7 @@ public:
 			.setFinalLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // When the renderpass ends, transition this to shader read-only 
 
 		// The final image that will be show on the screen
-		auto swapchain_attachment_description = vk::AttachmentDescription{}
+		auto attachment_description_swap = vk::AttachmentDescription{}
 			.setFormat(swapchain_image_format)
 			.setLoadOp(vk::AttachmentLoadOp::eClear)
 			.setStoreOp(vk::AttachmentStoreOp::eStore)
@@ -301,50 +321,45 @@ public:
 			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
 			.setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
 
-		vk::AttachmentDescription all_attachment_descriptions[2] = { 
-			pong_attachment_description,		// 0
-			swapchain_attachment_description	// 1
+		vk::AttachmentDescription all_attachment_descriptions[2] = 
+		{ 
+			attachment_description_pong, // Used by the first and second subpasses	
+			attachment_description_swap	 // Only used by the second subpass (for presentation)
 		};
+
+		// Indices in the array of `vk::AttachmentDescription` above
 		const uint32_t pong_index = 0;
 		const uint32_t swap_index = 1;
-		
-
-
-
 
 		// Subpass #1
-		vk::AttachmentReference attachment_references_pong[1] = {
-			vk::AttachmentReference{ pong_index, vk::ImageLayout::eColorAttachmentOptimal }
+		vk::AttachmentReference attachment_references_pong[1] = 
+		{
+			vk::AttachmentReference{ pong_index, vk::ImageLayout::eColorAttachmentOptimal } // Color attachment
 		};
-
 		auto subpass_description_pong = vk::SubpassDescription{}
 			.setPColorAttachments(attachment_references_pong)
 			.setColorAttachmentCount(1);
 
-
-
-
 		// Subpass #2
-		vk::AttachmentReference attachment_references_final[2] = {
-			vk::AttachmentReference{ swap_index, vk::ImageLayout::eColorAttachmentOptimal }, 
-			vk::AttachmentReference{ pong_index, vk::ImageLayout::eShaderReadOnlyOptimal }
+		vk::AttachmentReference attachment_references_final[2] = 
+		{
+			vk::AttachmentReference{ swap_index, vk::ImageLayout::eColorAttachmentOptimal }, // Color attachment
+			vk::AttachmentReference{ pong_index, vk::ImageLayout::eShaderReadOnlyOptimal } // Input attachment
 		};
-
 		auto subpass_description_final = vk::SubpassDescription{}
 			.setPColorAttachments(&attachment_references_final[0])
 			.setColorAttachmentCount(1)
 			.setPInputAttachments(&attachment_references_final[1])
 			.setInputAttachmentCount(1);
-			
 
-
+		// TODO: why do we have this...?
 		auto subpass_dependency_ext_0 = vk::SubpassDependency{}
 			.setSrcSubpass(VK_SUBPASS_EXTERNAL)
 			.setDstSubpass(0)
-			// src
+			// Source
 			.setSrcStageMask(vk::PipelineStageFlagBits::eBottomOfPipe)
 			.setSrcAccessMask(vk::AccessFlagBits::eMemoryRead)
-			// dst
+			// Destination
 			.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
 			.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
@@ -352,15 +367,14 @@ public:
 		auto subpass_dependency_0_1 = vk::SubpassDependency{}
 			.setSrcSubpass(0)
 			.setDstSubpass(1)
-			// src
+			// Source
 			.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
 			.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
-			// dst
+			// Destination
 			.setDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
 			.setDstAccessMask(vk::AccessFlagBits::eShaderRead);
 
-
-
+		// Create the render pass
 		vk::SubpassDescription subpass_descriptions[] = { subpass_description_pong, subpass_description_final };
 		vk::SubpassDependency subpass_dependencies[] = { subpass_dependency_ext_0, subpass_dependency_0_1 };
 		auto render_pass_create_info = vk::RenderPassCreateInfo{ {}, 2, all_attachment_descriptions, 2, subpass_descriptions, 2, subpass_dependencies };
@@ -379,19 +393,20 @@ public:
 		// If there were multiple sets, you would need to create a `vk::DescriptorSetLayoutCreateInfo`
 		// struct for each set and ensure that the appropriate `vk::DescriptorSetLayoutBinding` structs
 		// were associated with that descriptor set layout
-		const uint32_t binding = 0;
 		const uint32_t count = 1;
-		vk::DescriptorSetLayoutBinding descriptor_set_layout_bindings[2] = {
+		vk::DescriptorSetLayoutBinding descriptor_set_layout_bindings[2] = 
+		{
 			// Combined image sampler (used by first subpass)
 			vk::DescriptorSetLayoutBinding{
-				binding,
+				0, // Binding #0
 				vk::DescriptorType::eCombinedImageSampler,
 				count,
 				vk::ShaderStageFlagBits::eFragment
 			},
+
 			// Input attachment (used by second subpass)
 			vk::DescriptorSetLayoutBinding{
-				binding + 1,
+				1, // Binding #1
 				vk::DescriptorType::eInputAttachment,
 				count,
 				vk::ShaderStageFlagBits::eFragment
@@ -408,12 +423,12 @@ public:
 	void initialize_pipeline_layout()
 	{
 		// Then, create a pipeline layout
-		auto push_constant_range = vk::PushConstantRange{ vk::ShaderStageFlagBits::eFragment, 0, sizeof(float) * 4 };
+		auto push_constant_range = vk::PushConstantRange{ vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstants) };
 		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo{}
 			.setPPushConstantRanges(&push_constant_range)
 			.setPushConstantRangeCount(1)
 			.setPSetLayouts(&descriptor_set_layout.get())
-			.setSetLayoutCount(1); // Really good *GOTCHA* - classic Karl
+			.setSetLayoutCount(1);
 
 		// Pipeline layout will be shared across both pipelines
 		pipeline_layout = device->createPipelineLayoutUnique(pipeline_layout_create_info);
@@ -421,14 +436,15 @@ public:
 
 	void initialize_pipelines()
 	{
-		// First, load the shader modules
+		// First, load all of the shader modules
 		const std::string path_prefix = "";
 		auto vs_module_quad = load_spv_into_module(device, path_prefix + "quad.spv");
 		auto fs_module_pathtrace = load_spv_into_module(device, path_prefix + "pathtrace.spv");
 		auto fs_module_composite = load_spv_into_module(device, path_prefix + "composite.spv");
 		LOG_DEBUG("Successfully loaded shader modules");
 
-		// Load the first two shader modules
+		// Create all of the structs used for pipeline creation: the only thing different between the two
+		// pipelines will be the `vk::PipelineShaderStageCreateInfo` below
 		const char* entry_point = "main";
 		auto vs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vs_module_quad.get(), entry_point };
 		auto fs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_pathtrace.get(), entry_point };
@@ -573,13 +589,9 @@ public:
 	{
 		const vk::Rect2D render_area{ { 0, 0 }, swapchain_extent };
 
-		PushConstants push_constants =
-		{
-			get_elapsed_time(),
-			static_cast<float>(frame_counter), 
-			static_cast<float>(width),
-			static_cast<float>(height)
-		};
+		double xpos;
+		double ypos;
+		glfwGetCursorPos(window, &xpos, &ypos);
 
 		const vk::ClearValue clear_values[] = {
 			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }, // TODO: is this value needed? 
@@ -590,8 +602,39 @@ public:
 
 		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
 		command_buffers[index]->beginRenderPass(vk::RenderPassBeginInfo{ render_pass.get(), ping_pong_framebuffers[index * 2 + frame_offset].get(), render_area, 2, clear_values }, vk::SubpassContents::eInline);
+	
+		if (dirty)
+		{
+			//const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
+			//const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+
+
+			//// Clear the back-buffer
+			//if (frame_offset == 0)
+			//{
+			//	command_buffers[index]->clearColorImage(image_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
+			//}
+			//else
+			//{
+			//	command_buffers[index]->clearColorImage(image_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
+			//}
+
+			//frame_counter = 0;
+			//dirty = false;
+		}
+
+		PushConstants push_constants =
+		{
+			get_elapsed_time(),
+			static_cast<float>(frame_counter),
+			static_cast<float>(width),
+			static_cast<float>(height),
+			cursor_position[0],
+			cursor_position[1]
+		};
 		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
-		
+
 		if (frame_offset == 0)
 		{
 			// Bind set A
@@ -688,7 +731,7 @@ public:
 		sampler = device->createSamplerUnique(sampler_create_info);
 	}
 
-	void initialize_descriptor_set()
+	void initialize_descriptor_sets()
 	{
 		// We allocate descriptors from the descriptor pool created above
 		auto descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo{ descriptor_pool.get(), 1, &descriptor_set_layout.get() };
@@ -753,6 +796,29 @@ public:
 		{
 			glfwPollEvents();
 
+			if (dirty)
+			{
+				int frame_offset = (frame_counter % 2 == 0) ? 0 : 1;
+
+				const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
+				const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+				one_time_commands([&](const vk::UniqueCommandBuffer& command_buffer) {
+					// Clear the back-buffer
+					if (frame_offset == 0)
+					{
+						command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
+					}
+					else
+					{
+						command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
+					}
+				});
+
+				frame_counter = 0;
+				dirty = false;
+			}
+
 			// Submit a command buffer after acquiring the index of the next available swapchain image
 			auto index = device->acquireNextImageKHR(swapchain.get(), (std::numeric_limits<uint64_t>::max)(), semaphore_image_available.get(), {}).value;
 
@@ -779,6 +845,9 @@ private:
 	uint32_t width;
 	uint32_t height;
 	std::string name;
+	uint32_t frame_counter;
+	float cursor_position[2];
+	bool dirty;
 
 	GLFWwindow* window;
 
@@ -809,11 +878,10 @@ private:
 	vk::UniqueSemaphore sempahore_render_finished;
 	std::vector<vk::Image> swapchain_images;
 	std::vector<vk::UniqueImageView> swapchain_image_views;
-	std::vector<vk::UniqueFramebuffer> framebuffers;
+
 	std::vector<vk::UniqueCommandBuffer> command_buffers;
 	std::vector<vk::UniqueFence> fences;
 
-	uint32_t frame_counter;
 	vk::UniqueImage image_a;
 	vk::UniqueImage image_b;
 	vk::UniqueDeviceMemory device_memory_ab;
