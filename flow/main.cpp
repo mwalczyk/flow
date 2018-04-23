@@ -22,7 +22,7 @@
 struct alignas(8) PushConstants
 {
 	float time;
-	float __padding;
+	float frame_counter;
 	float resolution[2];
 	/* Add more members here: mind the struct alignment */
 };
@@ -95,6 +95,7 @@ public:
 	{
 		ping_pong_image_format = vk::Format::eR32G32B32A32Sfloat;
 		swapchain_image_format = vk::Format::eB8G8R8A8Unorm;
+		frame_counter = 0;
 
 		setup();
 	}
@@ -128,19 +129,20 @@ public:
 
 		swapchain.reset();
 		render_pass.reset();
-		pipeline.reset();
+		pipeline_composite.reset();
 
 		// We do not need to explicitly clear the framebuffers or swapchain image views, since that is taken
 		// care of by the `initialize_*()` methods below
 
 		initialize_swapchain();
 		initialize_render_pass();
-		initialize_pipeline();
+		initialize_pipelines();
 		initialize_framebuffers();
 	}
 
 	void setup()
 	{
+		// General setup 
 		initialize_window();
 		initialize_instance();
 		initialize_device();
@@ -148,20 +150,23 @@ public:
 		initialize_swapchain();
 		initialize_render_pass();
 		initialize_descriptor_set_layout();
-		initialize_pipeline();
+		initialize_pipeline_layout();
+		initialize_pipelines();
 		
+		// We need to do this before initializing our framebuffers, since each framebuffer will be associated with either A or B
 		initialize_ping_pong_images();
-		
+
+		// Per-frame resources
 		initialize_framebuffers();
 		initialize_command_pool();
 		initialize_command_buffers();
 		initialize_synchronization_primitives();
+		clear_ping_pong_images();
 
+		// Descriptors
 		initialize_descriptor_pool();
 		initialize_sampler();
 		initialize_descriptor_set();
-
-		clear_ping_pong_images();
 	}
 
 	void initialize_window()
@@ -277,20 +282,10 @@ public:
 
 	void initialize_render_pass()
 	{
-		// The image that will be sampled (either A or B)
-		auto ping_attachment_description = vk::AttachmentDescription{}
-			.setFormat(ping_pong_image_format)
-			.setLoadOp(vk::AttachmentLoadOp::eLoad) // TODO: is this correct?
-			.setStoreOp(vk::AttachmentStoreOp::eStore)
-			.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
-			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
-			.setInitialLayout(vk::ImageLayout::eShaderReadOnlyOptimal) // When the renderpass begins, this will be read by a shader
-			.setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal); // When the renderpass ends, transition this to a color attachment
-
 		// The image that will be rendered into (either A or B)
 		auto pong_attachment_description = vk::AttachmentDescription{}
 			.setFormat(ping_pong_image_format)
-			.setLoadOp(vk::AttachmentLoadOp::eClear)
+			.setLoadOp(vk::AttachmentLoadOp::eLoad) // Don't erase what was previously drawn into this attachment
 			.setStoreOp(vk::AttachmentStoreOp::eStore)
 			.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
 			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
@@ -306,30 +301,69 @@ public:
 			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
 			.setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
 
-		vk::AttachmentDescription all_attachment_descriptions[3] = { 
-			ping_attachment_description,
-			pong_attachment_description, 
-			swapchain_attachment_description 
+		vk::AttachmentDescription all_attachment_descriptions[2] = { 
+			pong_attachment_description,		// 0
+			swapchain_attachment_description	// 1
+		};
+		const uint32_t pong_index = 0;
+		const uint32_t swap_index = 1;
+		
+
+
+
+
+		// Subpass #1
+		vk::AttachmentReference attachment_references_pong[1] = {
+			vk::AttachmentReference{ pong_index, vk::ImageLayout::eColorAttachmentOptimal }
 		};
 
-		const uint32_t attachment_index = 0;
-		auto attachment_reference = vk::AttachmentReference{ attachment_index, vk::ImageLayout::eColorAttachmentOptimal };
-
-		auto subpass_description = vk::SubpassDescription{}
-			.setPColorAttachments(&attachment_reference)
+		auto subpass_description_pong = vk::SubpassDescription{}
+			.setPColorAttachments(attachment_references_pong)
 			.setColorAttachmentCount(1);
 
-		// TODO: add subpass that uses the back-buffer as an input attachment
 
-		auto subpass_dependency = vk::SubpassDependency{}
+
+
+		// Subpass #2
+		vk::AttachmentReference attachment_references_final[2] = {
+			vk::AttachmentReference{ swap_index, vk::ImageLayout::eColorAttachmentOptimal }, 
+			vk::AttachmentReference{ pong_index, vk::ImageLayout::eShaderReadOnlyOptimal }
+		};
+
+		auto subpass_description_final = vk::SubpassDescription{}
+			.setPColorAttachments(&attachment_references_final[0])
+			.setColorAttachmentCount(1)
+			.setPInputAttachments(&attachment_references_final[1])
+			.setInputAttachmentCount(1);
+			
+
+
+		auto subpass_dependency_ext_0 = vk::SubpassDependency{}
 			.setSrcSubpass(VK_SUBPASS_EXTERNAL)
 			.setDstSubpass(0)
-			.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
-			.setSrcAccessMask({})
+			// src
+			.setSrcStageMask(vk::PipelineStageFlagBits::eBottomOfPipe)
+			.setSrcAccessMask(vk::AccessFlagBits::eMemoryRead)
+			// dst
 			.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
 			.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
 
-		auto render_pass_create_info = vk::RenderPassCreateInfo{ {}, 1, &swapchain_attachment_description, 1, &subpass_description, 1, &subpass_dependency };
+		// This dependency transitions the input attachment from color attachment to shader read
+		auto subpass_dependency_0_1 = vk::SubpassDependency{}
+			.setSrcSubpass(0)
+			.setDstSubpass(1)
+			// src
+			.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+			.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+			// dst
+			.setDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
+			.setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+
+
+
+		vk::SubpassDescription subpass_descriptions[] = { subpass_description_pong, subpass_description_final };
+		vk::SubpassDependency subpass_dependencies[] = { subpass_dependency_ext_0, subpass_dependency_0_1 };
+		auto render_pass_create_info = vk::RenderPassCreateInfo{ {}, 2, all_attachment_descriptions, 2, subpass_descriptions, 2, subpass_dependencies };
 
 		render_pass = device->createRenderPassUnique(render_pass_create_info);
 	}
@@ -347,30 +381,32 @@ public:
 		// were associated with that descriptor set layout
 		const uint32_t binding = 0;
 		const uint32_t count = 1;
-		auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding{
-			binding,
-			vk::DescriptorType::eCombinedImageSampler,
-			count,
-			vk::ShaderStageFlagBits::eFragment
+		vk::DescriptorSetLayoutBinding descriptor_set_layout_bindings[2] = {
+			// Combined image sampler (used by first subpass)
+			vk::DescriptorSetLayoutBinding{
+				binding,
+				vk::DescriptorType::eCombinedImageSampler,
+				count,
+				vk::ShaderStageFlagBits::eFragment
+			},
+			// Input attachment (used by second subpass)
+			vk::DescriptorSetLayoutBinding{
+				binding + 1,
+				vk::DescriptorType::eInputAttachment,
+				count,
+				vk::ShaderStageFlagBits::eFragment
+			}
 		};
 
 		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo{}
-			.setPBindings(&descriptor_set_layout_binding)
-			.setBindingCount(1);
+			.setPBindings(descriptor_set_layout_bindings)
+			.setBindingCount(2);
 
 		descriptor_set_layout = device->createDescriptorSetLayoutUnique(descriptor_set_layout_create_info);
 	}
 
-	void initialize_pipeline()
+	void initialize_pipeline_layout()
 	{
-		// First, load the shader modules
-		const std::string path_prefix = "";
-		const std::string vs_spv_path = path_prefix + "vert.spv";
-		const std::string fs_spv_path = path_prefix + "frag.spv";
-		auto vs_module = load_spv_into_module(device, vs_spv_path);
-		auto fs_module = load_spv_into_module(device, fs_spv_path);
-		LOG_DEBUG("Successfully loaded shader modules");
-		
 		// Then, create a pipeline layout
 		auto push_constant_range = vk::PushConstantRange{ vk::ShaderStageFlagBits::eFragment, 0, sizeof(float) * 4 };
 		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo{}
@@ -379,13 +415,24 @@ public:
 			.setPSetLayouts(&descriptor_set_layout.get())
 			.setSetLayoutCount(1); // Really good *GOTCHA* - classic Karl
 
-		pipeline_layout = device->createPipelineLayoutUnique(pipeline_layout_create_info /* Add additional push constants or descriptor sets here */ );
+		// Pipeline layout will be shared across both pipelines
+		pipeline_layout = device->createPipelineLayoutUnique(pipeline_layout_create_info);
+	}
 
-		// Finally, create the pipeline
+	void initialize_pipelines()
+	{
+		// First, load the shader modules
+		const std::string path_prefix = "";
+		auto vs_module_quad = load_spv_into_module(device, path_prefix + "quad.spv");
+		auto fs_module_pathtrace = load_spv_into_module(device, path_prefix + "pathtrace.spv");
+		auto fs_module_composite = load_spv_into_module(device, path_prefix + "composite.spv");
+		LOG_DEBUG("Successfully loaded shader modules");
+
+		// Load the first two shader modules
 		const char* entry_point = "main";
-		auto vs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vs_module.get(), entry_point };
-		auto fs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module.get(), entry_point };
-		const vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] = { vs_stage_create_info, fs_stage_create_info };
+		auto vs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vs_module_quad.get(), entry_point };
+		auto fs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_pathtrace.get(), entry_point };
+		vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] = { vs_stage_create_info, fs_stage_create_info };
 
 		auto vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo{};
 
@@ -428,8 +475,14 @@ public:
 			render_pass.get() 
 		};
 
-		pipeline = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
-		LOG_DEBUG("Created graphics pipeline");
+		// Create the pipeline for pathtracing
+		pipeline_pathtrace = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
+
+		// Switch the fragment shader module
+		shader_stage_create_infos[1] = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_composite.get(), entry_point };
+		pipeline_composite = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
+
+		LOG_DEBUG("Created graphics pipelines");
 	}
 	
 	void initialize_ping_pong_images()
@@ -441,7 +494,9 @@ public:
 			.setExtent({ width, height, 1 })
 			.setMipLevels(1)
 			.setArrayLayers(1)
-			.setUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled);
+			.setUsage(vk::ImageUsageFlagBits::eColorAttachment | 
+					  vk::ImageUsageFlagBits::eSampled | 
+					  vk::ImageUsageFlagBits::eInputAttachment /* Required for second subpass */);
 
 		image_a = device->createImageUnique(image_create_info);
 		image_b = device->createImageUnique(image_create_info);
@@ -484,15 +539,22 @@ public:
 
 	void initialize_framebuffers()
 	{
-		framebuffers.clear();
+		ping_pong_framebuffers.clear();
 
 		const uint32_t framebuffer_layers = 1;
-		for (const auto& image_view : swapchain_image_views)
+		for (size_t i = 0; i < swapchain_image_views.size(); ++i)
 		{
-			auto framebuffer_create_info = vk::FramebufferCreateInfo{ {}, render_pass.get(), 1, &image_view.get(), width, height, framebuffer_layers };
-			framebuffers.push_back(device->createFramebufferUnique(framebuffer_create_info));
+			// For each swapchain image, we actually need two framebuffers 
+			vk::ImageView attachments_ab[2] = { image_view_a.get(), swapchain_image_views[i].get() }; // AB
+			vk::ImageView attachments_ba[2] = { image_view_b.get(), swapchain_image_views[i].get() }; // BA
+
+			auto framebuffer_create_info_ab = vk::FramebufferCreateInfo{ {}, render_pass.get(), 2, attachments_ab, width, height, framebuffer_layers }; // Render into A first, then the swapchain image
+			auto framebuffer_create_info_ba = vk::FramebufferCreateInfo{ {}, render_pass.get(), 2, attachments_ba, width, height, framebuffer_layers }; // Render into B first, then the swapchain image
+
+			ping_pong_framebuffers.push_back(device->createFramebufferUnique(framebuffer_create_info_ab)); // AB
+			ping_pong_framebuffers.push_back(device->createFramebufferUnique(framebuffer_create_info_ba)); // BA
 		}
-		LOG_DEBUG("Created [ " << framebuffers.size() << " ] framebuffers");
+		LOG_DEBUG("Created [ " << ping_pong_framebuffers.size() << " ] framebuffers");
 	}
 
 	void initialize_command_pool()
@@ -502,43 +564,57 @@ public:
 
 	void initialize_command_buffers()
 	{
-		command_buffers = device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(framebuffers.size()) });
+		// We only need one command buffer per pair of framebuffers (AB - BA), thus we divide the length of `ping_pong_framebuffers` by 2
+		command_buffers = device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(ping_pong_framebuffers.size() / 2) });
 		LOG_DEBUG("Allocated [ " << command_buffers.size() << " ] command buffers");
 	}
 
 	void record_command_buffer(uint32_t index)
 	{
-		const vk::ClearValue clear = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
 		const vk::Rect2D render_area{ { 0, 0 }, swapchain_extent };
 
 		PushConstants push_constants =
 		{
 			get_elapsed_time(),
-			0.0f,  /* Padding */
+			static_cast<float>(frame_counter), 
 			static_cast<float>(width),
 			static_cast<float>(height)
 		};
 
-		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
-		command_buffers[index]->beginRenderPass(vk::RenderPassBeginInfo{ render_pass.get(), framebuffers[index].get(), render_area, 1, &clear }, vk::SubpassContents::eInline);
-		command_buffers[index]->bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get());
+		const vk::ClearValue clear_values[] = {
+			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }, // TODO: is this value needed? 
+			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }
+		};
 
-		if (index % 2 == 0)
+		int frame_offset = (frame_counter % 2 == 0) ? 0: 1;
+
+		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
+		command_buffers[index]->beginRenderPass(vk::RenderPassBeginInfo{ render_pass.get(), ping_pong_framebuffers[index * 2 + frame_offset].get(), render_area, 2, clear_values }, vk::SubpassContents::eInline);
+		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
+		
+		if (frame_offset == 0)
 		{
-			// Image A is the back-buffer (i.e. will be read in the shader)
-			// Image B will be rendered into
+			// Bind set A
 			command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set_a.get(), {});
 		}
 		else
 		{
-			// Image B is the back-buffer (i.e. will be read in the shader)
-			// Image A will be rendered into
+			// Bind set B
 			command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set_b.get(), {});
-
 		}
 
-		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
+		// Bind the pathtracer pipeline object and render a full-screen quad
+		command_buffers[index]->bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_pathtrace.get());
 		command_buffers[index]->draw(6, 1, 0, 0);
+
+		// Begin the second subpass
+		command_buffers[index]->nextSubpass({});
+
+		// Bind the composite pipeline object and render another full-screen quad
+		command_buffers[index]->bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_composite.get());
+		command_buffers[index]->draw(6, 1, 0, 0);
+
+		// End the renderpass
 		command_buffers[index]->endRenderPass();
 		command_buffers[index]->end();
 	}
@@ -555,14 +631,49 @@ public:
 		}
 	}
 
+	void one_time_commands(std::function<void(vk::UniqueCommandBuffer const &)> func)
+	{
+		auto command_buffer = std::move(device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, 1 })[0]);
+
+		// Record user-defined commands in between begin/end
+		command_buffer->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
+		func(command_buffer);
+		command_buffer->end();
+
+		auto submit_info = vk::SubmitInfo{}
+			.setPCommandBuffers(&command_buffer.get())
+			.setCommandBufferCount(1);
+
+		// One time submit, so wait idle here for the work to complete
+		queue.submit(submit_info, {});
+		queue.waitIdle();
+	}
+
+	void clear_ping_pong_images()
+	{
+		const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
+
+		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+		// Clear both A and B
+		one_time_commands([&](const auto& command_buffer) {
+			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, black, subresource_range);
+			command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eUndefined, black, subresource_range);
+		});
+
+		LOG_DEBUG("Cleared images");
+	}
+
 	void initialize_descriptor_pool()
 	{
-		const uint32_t count = 1;
-		auto descriptor_pool_size = vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, count };
+		vk::DescriptorPoolSize descriptor_pool_sizes[2] = {
+			vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 1 },
+			vk::DescriptorPoolSize{ vk::DescriptorType::eInputAttachment, 1 }
+		};
 		
 		// We need a unique descriptor set for each ping-pong image, although they will share the same layout
 		const uint32_t max_sets = 2;
-		auto descriptor_pool_create_info = vk::DescriptorPoolCreateInfo{ {}, max_sets, 1, &descriptor_pool_size };
+		auto descriptor_pool_create_info = vk::DescriptorPoolCreateInfo{ {}, max_sets, 2, descriptor_pool_sizes };
 		
 		descriptor_pool = device->createDescriptorPoolUnique(descriptor_pool_create_info);
 		LOG_DEBUG("Created descriptor pool with [ " << max_sets << " ] possible allocations");
@@ -582,76 +693,58 @@ public:
 		// We allocate descriptors from the descriptor pool created above
 		auto descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo{ descriptor_pool.get(), 1, &descriptor_set_layout.get() };
 
+		// In this project, we actually use two separate (but identical in terms of # of descriptors, types, etc.) - this is because
+		// the image that serves as our "back-buffer" during the ping-ponging changes from frame to frame
 		descriptor_set_a = std::move(device->allocateDescriptorSetsUnique(descriptor_set_allocate_info)[0]);
 		descriptor_set_b = std::move(device->allocateDescriptorSetsUnique(descriptor_set_allocate_info)[0]);
 		LOG_DEBUG("Allocated descriptor set(s)");
 
-		// Write to descriptor set A
-		{
-			auto descriptor_image_info_a = vk::DescriptorImageInfo{ sampler.get(), image_view_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal };
+		// These are hard-coded bindings in the shader and therefore do not change between A / B
+		const uint32_t cis_binding = 0;
+		const uint32_t input_binding = 1;
 
-			auto write_descriptor_set = vk::WriteDescriptorSet{}
+		auto descriptor_image_info_a = vk::DescriptorImageInfo{ sampler.get(), image_view_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal }; // TODO: no idea what these layouts should be...
+		auto descriptor_image_info_b = vk::DescriptorImageInfo{ sampler.get(), image_view_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal };
+
+		// Write to descriptor set A, where A is the intermediate render target
+		{
+			auto write_descriptor_set_cis = vk::WriteDescriptorSet{}
 				.setDescriptorCount(1)
 				.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-				.setDstBinding(0)
+				.setDstBinding(cis_binding)
+				.setDstSet(descriptor_set_a.get())
+				.setPImageInfo(&descriptor_image_info_b);
+
+			auto write_descriptor_set_input = vk::WriteDescriptorSet{}
+				.setDescriptorCount(1)
+				.setDescriptorType(vk::DescriptorType::eInputAttachment)
+				.setDstBinding(input_binding)
 				.setDstSet(descriptor_set_a.get())
 				.setPImageInfo(&descriptor_image_info_a);
 
-			device->updateDescriptorSets(write_descriptor_set, {});
+			device->updateDescriptorSets({ write_descriptor_set_cis, write_descriptor_set_input }, {});
 		}
 
-		// Write to descriptor set B
+		// Write to descriptor set B, where B is the intermediate render target
 		{
-			auto descriptor_image_info_b = vk::DescriptorImageInfo{ sampler.get(), image_view_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal };
-
-			auto write_descriptor_set = vk::WriteDescriptorSet{}
+			auto write_descriptor_set_cis = vk::WriteDescriptorSet{}
 				.setDescriptorCount(1)
 				.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-				.setDstBinding(0)
+				.setDstBinding(cis_binding)
+				.setDstSet(descriptor_set_b.get())
+				.setPImageInfo(&descriptor_image_info_a);
+
+			auto write_descriptor_set_input = vk::WriteDescriptorSet{}
+				.setDescriptorCount(1)
+				.setDescriptorType(vk::DescriptorType::eInputAttachment)
+				.setDstBinding(input_binding)
 				.setDstSet(descriptor_set_b.get())
 				.setPImageInfo(&descriptor_image_info_b);
 
-			device->updateDescriptorSets(write_descriptor_set, {});
+			device->updateDescriptorSets({ write_descriptor_set_cis, write_descriptor_set_input }, {});
 		}
 
 		LOG_DEBUG("Wrote descriptor set(s)");
-	}
-
-	void one_time_commands(std::function<void(vk::UniqueCommandBuffer const &)> func)
-	{
-		auto command_buffer = std::move(device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, 1 })[0]);
-		
-		// Record user-defined commands in between begin/end
-		command_buffer->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
-		func(command_buffer);
-		command_buffer->end();
-
-		auto submit_info = vk::SubmitInfo{}
-			.setPCommandBuffers(&command_buffer.get())
-			.setCommandBufferCount(1);
-
-		// One time submit, so wait idle here for the work to complete
-		queue.submit(submit_info, {});
-		queue.waitIdle();
-	}
-
-	void clear_ping_pong_images()
-	{
-		const vk::ClearColorValue red = std::array<float, 4>{ 1.0f, 0.0f, 0.0f, 1.0f };
-		const vk::ClearColorValue green = std::array<float, 4>{ 0.0f, 1.0f, 0.0f, 1.0f };
-		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-
-		// Clear A
-		one_time_commands([&](const auto& command_buffer) {
-			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, red, subresource_range);
-		});
-
-		// Clear B
-		one_time_commands([&](const auto& command_buffer) {
-			command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eUndefined, green, subresource_range);
-		});
-
-		LOG_DEBUG("Cleared images");
 	}
 
 	void draw()
@@ -709,7 +802,8 @@ private:
 	vk::UniqueSwapchainKHR swapchain;
 	vk::UniqueRenderPass render_pass;
 	vk::UniquePipelineLayout pipeline_layout;
-	vk::UniquePipeline pipeline;
+	vk::UniquePipeline pipeline_pathtrace;
+	vk::UniquePipeline pipeline_composite;
 	vk::UniqueCommandPool command_pool;
 	vk::UniqueSemaphore semaphore_image_available;
 	vk::UniqueSemaphore sempahore_render_finished;
@@ -733,7 +827,7 @@ private:
 	vk::UniqueSampler sampler;
 
 	// Least common multiple of the number of swapchain images (3) and number of ping-pong buffers (2)
-	std::array<std::array<vk::UniqueFramebuffer, 2>, 3> ping_pong_framebuffers;
+	std::vector<vk::UniqueFramebuffer> ping_pong_framebuffers;
 };
 
 int main()
