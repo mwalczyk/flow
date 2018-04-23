@@ -178,9 +178,9 @@ const uint number_of_planes = 4;
 
 sphere spheres[] = {
 	sphere(100.0, vec3(0.0, 100.9, 0.0), vec3(1.0, 0.8, 0.8)), // Ground
-	sphere(0.55, vec3(-1.1, 0.25, -1.1), vec3(0.55)),
-	sphere(0.20, vec3( 1.0, 0.25, -1.6), vec3(0.55)),
-	sphere(0.95, vec3( 0.0, 0.00,  0.0), vec3(0.55))
+	//sphere(0.55, vec3(-1.1, 0.25, -1.1), vec3(0.55)),
+	//sphere(0.20, vec3( 1.0, 0.25, -1.6), vec3(0.55)),
+	sphere(1.5, vec3( 0.0, -0.75,  0.0), vec3(0.75, 0.75, 0.6))
 };
 
 plane planes[] = {
@@ -416,7 +416,7 @@ vec3 trace()
 			if (itr.object_index > 0)
 			{
 				float roughness = rand_stable(vec2(itr.object_index));
-				r.direction = scatter_metallic(itr.position, incident, itr.normal, seed, 1.0);
+				r.direction = scatter_metallic(itr.position, incident, itr.normal, seed, 0.98);
 			}
 			
 			accumulated *= 2.0 * spheres[itr.object_index].albedo;
