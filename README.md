@@ -37,6 +37,16 @@ to:
 ObjectDestroy<NoParent> deleter( allocator );
 ```
 
+## To Do
+- [ ] Tone mapping and exposure adjustment
+- [ ] Explicit light sampling 
+- [ ] Russian roulette path termination
+- [ ] Reflective materials (dielectrics)
+- [ ] Improved BRDFs (GGX, Cook-Torrance, etc.)
+- [ ] Spatial acceleration data structures (most likely some form of GPU KD-tree)
+- [ ] Scene format (`.json`) and parser
+- [ ] Screenshot utility
+
 ### License
 
 :copyright: The Interaction Department 2018
