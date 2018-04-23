@@ -9,7 +9,10 @@
 Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
 ## Tested On
-Windows 8.1, NVIDIA GeForce GTX 970M, `1.1.70.1` Vulkan SDK with Visual Studio 2015.
+- Windows 8.1, Windows 10
+- NVIDIA GeForce GTX 970M, NVIDIA GeForce GTX 980
+- Vulkan SDK `1.1.70.1`
+- Visual Studio 2015.
 
 ## To Build
 1. Clone this repo.
