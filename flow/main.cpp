@@ -163,6 +163,8 @@ public:
 		initialize_ping_pong_images();
 		initialize_descriptor_sets();
 		initialize_framebuffers();
+
+		clear_ping_pong_images();
 	}
 
 	void setup()
@@ -703,16 +705,12 @@ public:
 			.setSubresourceRange(subresource_range)
 			.setImage(image_a.get());
 
-		one_time_commands([&](const vk::UniqueCommandBuffer& command_buffer) {
-			command_buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTopOfPipe, {}, {}, {}, image_memory_barrier);
-
-			image_memory_barrier.setImage(image_b.get());
-
-			command_buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTopOfPipe, {}, {}, {}, image_memory_barrier);
-		});
-
 		// Clear both A and B
 		one_time_commands([&](const auto& command_buffer) {
+			command_buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTopOfPipe, {}, {}, {}, image_memory_barrier);
+			image_memory_barrier.setImage(image_b.get());
+			command_buffer->pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTopOfPipe, {}, {}, {}, image_memory_barrier);
+
 			// Both images are now in `vk::ImageLayout::eGeneral`, due to the pipeline barrier above
 			command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eGeneral, black, subresource_range);
 			command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eGeneral, black, subresource_range);
