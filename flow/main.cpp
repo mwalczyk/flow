@@ -605,23 +605,21 @@ public:
 	
 		if (dirty)
 		{
-			//const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
-			//const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+			const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
+			const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
+			// Clear the back-buffer
+			if (frame_offset == 0)
+			{
+				command_buffers[index]->clearColorImage(image_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
+			}
+			else
+			{
+				command_buffers[index]->clearColorImage(image_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
+			}
 
-
-			//// Clear the back-buffer
-			//if (frame_offset == 0)
-			//{
-			//	command_buffers[index]->clearColorImage(image_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
-			//}
-			//else
-			//{
-			//	command_buffers[index]->clearColorImage(image_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
-			//}
-
-			//frame_counter = 0;
-			//dirty = false;
+			frame_counter = 0;
+			dirty = false;
 		}
 
 		PushConstants push_constants =
@@ -795,29 +793,6 @@ public:
 		while (!glfwWindowShouldClose(window)) 
 		{
 			glfwPollEvents();
-
-			if (dirty)
-			{
-				int frame_offset = (frame_counter % 2 == 0) ? 0 : 1;
-
-				const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
-				const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-
-				one_time_commands([&](const vk::UniqueCommandBuffer& command_buffer) {
-					// Clear the back-buffer
-					if (frame_offset == 0)
-					{
-						command_buffer->clearColorImage(image_b.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
-					}
-					else
-					{
-						command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal, black, subresource_range);
-					}
-				});
-
-				frame_counter = 0;
-				dirty = false;
-			}
 
 			// Submit a command buffer after acquiring the index of the next available swapchain image
 			auto index = device->acquireNextImageKHR(swapchain.get(), (std::numeric_limits<uint64_t>::max)(), semaphore_image_available.get(), {}).value;

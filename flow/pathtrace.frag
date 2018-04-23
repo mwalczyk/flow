@@ -86,14 +86,6 @@ struct plane
 	vec3 albedo;
 };
 
-struct triangle
-{
-	vec3 a;
-	vec3 b;
-	vec3 c;
-	vec3 normal;
-};
-
 /****************************************************************************************************
  *
  * Utilities
@@ -181,47 +173,23 @@ vec3 palette(in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d)
     return a + b * cos(2.0 * pi * (c * t + d));
 }
 
-vec3 sphere_color(in float t)
-{
-	return palette(t * 0.2, vec3(0.5, 0.5, 0.5), vec3(0.5, 0.5, 0.5), vec3(1.0, 1.0, 1.0), vec3(0.00, 0.10, 0.20));
-}
-
-const uint number_of_spheres = 8;
+const uint number_of_spheres = 4;
 const uint number_of_planes = 4;
-const float sphere_radii = 0.35;
-
-vec3 position_on_circle(int index)
-{
-	float theta = (float(index) / float(number_of_spheres - 2)) * 2.0 * pi;
-
-	const float r = 1.85;
-	float x = cos(theta) * r;
-	float y = cos(theta) * 0.5 - 0.5;
-	float z = sin(theta) * r;
-
-	return vec3(x, y, z);
-}
 
 sphere spheres[] = {
 	sphere(100.0, vec3(0.0, 100.9, 0.0), vec3(1.0, 0.8, 0.8)), // Ground
-	
-	sphere(sphere_radii, position_on_circle(0), sphere_color(1.0 / float(number_of_spheres))),
-	sphere(sphere_radii, position_on_circle(1), sphere_color(2.0 / float(number_of_spheres))),
-	sphere(sphere_radii, position_on_circle(2), sphere_color(3.0 / float(number_of_spheres))),
-	sphere(sphere_radii, position_on_circle(3), sphere_color(4.0 / float(number_of_spheres))),
-	sphere(sphere_radii, position_on_circle(4), sphere_color(5.0 / float(number_of_spheres))),
-	sphere(sphere_radii, position_on_circle(5), sphere_color(6.0 / float(number_of_spheres))),
-
-	sphere(0.95, vec3(0.0, 0.0, 0.0), vec3(0.55)) // Top
+	sphere(0.55, vec3(-1.1, 0.25, -1.1), vec3(0.55)),
+	sphere(0.20, vec3( 1.0, 0.25, -1.6), vec3(0.55)),
+	sphere(0.95, vec3( 0.0, 0.00,  0.0), vec3(0.55))
 };
 
-// Note that the negative z-axis points towards us (the viewer).
 plane planes[] = {
 	plane(-z_axis,  z_axis * 3.5, white * 0.3), // Back
-	plane( z_axis, -z_axis * 4.5, white * 0.3), // Top
+	plane( z_axis, -z_axis * 4.5, white * 0.3), // Front
 	plane(-x_axis,  x_axis * 4.5, white * 0.3), // Left
 	plane( x_axis, -x_axis * 4.5, white * 0.3), // Right
-	//plane(-y_axis,  y_axis * 3.5, white * 0.4)  // Top
+	
+	// plane(-y_axis,  y_axis * 1.5, white * 0.9) // Bottom
 };
 
 /****************************************************************************************************
@@ -446,11 +414,11 @@ vec3 trace()
 		case object_type_sphere:
 
 			if (itr.object_index > 0)
-			{ 
+			{
 				float roughness = rand_stable(vec2(itr.object_index));
 				r.direction = scatter_metallic(itr.position, incident, itr.normal, seed, 1.0);
 			}
-
+			
 			accumulated *= 2.0 * spheres[itr.object_index].albedo;
 			break;
 
