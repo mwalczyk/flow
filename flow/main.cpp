@@ -526,6 +526,9 @@ public:
 		image_b = device->createImageUnique(image_create_info);
 		LOG_DEBUG("Created images for ping-ponging");
 
+		// Note that at this point, both images are in `vk::ImageLayout::eUndefined`, which does not support device access - we transition them to
+		// `vk::ImageLayout::eGeneral` in `clear_ping_pong_images()`
+
 		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
 		auto image_view_create_info = vk::ImageViewCreateInfo{}
@@ -692,9 +695,10 @@ public:
 	void clear_ping_pong_images()
 	{
 		const vk::ClearColorValue black = std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f };
-
 		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
+		// The memory barrier that will be used to transition each image from `vk::ImageLayout::eUndefined` to `vk::ImageLayout::eGeneral`,
+		// which, per the spec, is required before attempting to clear the image
 		auto image_memory_barrier = vk::ImageMemoryBarrier{}
 			.setSrcAccessMask({})
 			.setDstAccessMask({})
