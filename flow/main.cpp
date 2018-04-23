@@ -143,6 +143,7 @@ public:
 		initialize_surface();
 		initialize_swapchain();
 		initialize_render_pass();
+		initialize_descriptor_set_layout();
 		initialize_pipeline();
 		initialize_framebuffers();
 		initialize_command_pool();
@@ -150,6 +151,11 @@ public:
 		initialize_synchronization_primitives();
 
 		initialize_ping_pong_images();
+		initialize_descriptor_pool();
+		initialize_sampler();
+		initialize_descriptor_set();
+
+		clear_ping_pong_images();
 	}
 
 	void initialize_window()
@@ -294,6 +300,33 @@ public:
 		render_pass = device->createRenderPassUnique(render_pass_create_info);
 	}
 
+	void initialize_descriptor_set_layout()
+	{
+		// Set up a single descriptor set layout binding - in the shader, these will look like:
+		//
+		//		layout(set = 0, binding = 0) uniform sampler2D ...;
+		//		layout(set = 0, binding = 1) uniform sampler3D ...;
+		//		etc.
+		//
+		// If there were multiple sets, you would need to create a `vk::DescriptorSetLayoutCreateInfo`
+		// struct for each set and ensure that the appropriate `vk::DescriptorSetLayoutBinding` structs
+		// were associated with that descriptor set layout
+		const uint32_t binding = 0;
+		const uint32_t count = 1;
+		auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding{
+			binding,
+			vk::DescriptorType::eCombinedImageSampler,
+			count,
+			vk::ShaderStageFlagBits::eFragment
+		};
+
+		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo{}
+			.setPBindings(&descriptor_set_layout_binding)
+			.setBindingCount(1);
+
+		descriptor_set_layout = device->createDescriptorSetLayoutUnique(descriptor_set_layout_create_info);
+	}
+
 	void initialize_pipeline()
 	{
 		// First, load the shader modules
@@ -308,7 +341,9 @@ public:
 		auto push_constant_range = vk::PushConstantRange{ vk::ShaderStageFlagBits::eFragment, 0, sizeof(float) * 4 };
 		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo{}
 			.setPPushConstantRanges(&push_constant_range)
-			.setPushConstantRangeCount(1);
+			.setPushConstantRangeCount(1)
+			.setPSetLayouts(&descriptor_set_layout.get())
+			.setSetLayoutCount(1); // Really good *GOTCHA* - classic Karl
 
 		pipeline_layout = device->createPipelineLayoutUnique(pipeline_layout_create_info /* Add additional push constants or descriptor sets here */ );
 
@@ -403,6 +438,7 @@ public:
 		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
 		command_buffers[index]->beginRenderPass(vk::RenderPassBeginInfo{ render_pass.get(), framebuffers[index].get(), render_area, 1, &clear }, vk::SubpassContents::eInline);
 		command_buffers[index]->bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get());
+		command_buffers[index]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout.get(), 0, descriptor_set.get(), {});
 		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
 		command_buffers[index]->draw(6, 1, 0, 0);
 		command_buffers[index]->endRenderPass();
@@ -473,6 +509,65 @@ public:
 		image_view_b = device->createImageViewUnique(image_view_create_info);
 	}
 
+	void initialize_descriptor_pool()
+	{
+		const uint32_t count = 1;
+		auto descriptor_pool_size = vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, count };
+		
+		const uint32_t max_sets = 1;
+		auto descriptor_pool_create_info = vk::DescriptorPoolCreateInfo{ {}, max_sets, 1, &descriptor_pool_size };
+		
+		descriptor_pool = device->createDescriptorPoolUnique(descriptor_pool_create_info);
+		LOG_DEBUG("Created descriptor pool with [ " << max_sets << " ] possible allocations");
+	}
+
+	void initialize_sampler()
+	{
+		auto sampler_create_info = vk::SamplerCreateInfo{ /* TODO */};
+
+		sampler = device->createSamplerUnique({});
+	}
+
+	void initialize_descriptor_set()
+	{
+		// We allocate descriptors from the descriptor pool created above
+		auto descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo{ descriptor_pool.get(), 1, &descriptor_set_layout.get() };
+
+		descriptor_set = std::move(device->allocateDescriptorSetsUnique(descriptor_set_allocate_info)[0]);
+		LOG_DEBUG("Allocated descriptor set(s)");
+
+		// Now, write to the descriptor set
+		auto descriptor_image_info = vk::DescriptorImageInfo{ sampler.get(), image_view_a.get(), vk::ImageLayout::eShaderReadOnlyOptimal };
+
+		auto write_descriptor_set = vk::WriteDescriptorSet{}
+			.setDescriptorCount(1)
+			.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+			.setDstBinding(0)
+			.setDstSet(descriptor_set.get())
+			.setPImageInfo(&descriptor_image_info);
+
+		device->updateDescriptorSets(write_descriptor_set, {});
+		LOG_DEBUG("Wrote descriptor set(s)");
+	}
+
+	void clear_ping_pong_images()
+	{
+		const vk::ClearColorValue clear = std::array<float, 4>{ 1.0f, 0.0f, 0.0f, 1.0f };
+		const auto subresource_range = vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+		auto command_buffer = std::move(device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, 1 })[0]);
+
+		command_buffer->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
+		command_buffer->clearColorImage(image_a.get(), vk::ImageLayout::eUndefined, clear, subresource_range);
+		command_buffer->end();
+
+		// One time submit, so wait idle here for the work to complete
+		auto submit_info = vk::SubmitInfo{ 0, {}, {}, 1, &command_buffer.get()};
+		queue.submit(submit_info, {});
+		queue.waitIdle();
+		LOG_DEBUG("Cleared images");
+	}
+
 	void draw()
 	{
 		while (!glfwWindowShouldClose(window)) 
@@ -496,6 +591,8 @@ public:
 			// Present the final rendered image to the swapchain
 			auto present_info = vk::PresentInfoKHR{ 1, &sempahore_render_finished.get(), 1, &swapchain.get(), &index };
 			queue.presentKHR(present_info);
+
+			frame_counter++;
 		}
 	}
 
@@ -534,11 +631,17 @@ private:
 	std::vector<vk::UniqueCommandBuffer> command_buffers;
 	std::vector<vk::UniqueFence> fences;
 
+	uint32_t frame_counter;
 	vk::UniqueImage image_a;
 	vk::UniqueImage image_b;
 	vk::UniqueDeviceMemory device_memory_ab;
 	vk::UniqueImageView image_view_a;
 	vk::UniqueImageView image_view_b;
+
+	vk::UniqueDescriptorSetLayout descriptor_set_layout;
+	vk::UniqueDescriptorPool descriptor_pool;
+	vk::UniqueDescriptorSet descriptor_set;
+	vk::UniqueSampler sampler;
 };
 
 int main()
