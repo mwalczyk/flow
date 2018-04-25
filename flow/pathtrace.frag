@@ -21,7 +21,8 @@ layout(location = 0) out vec4 o_color;
  ***************************************************************************************************/
 const float pi = 3.1415926535897932384626433832795;
 const float gamma = 1.0 / 2.2;
-const uint number_of_iterations = 5;
+const float anti_aliasing = 0.75;
+const uint number_of_iterations = 10;
 const uint number_of_bounces = 5;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
@@ -476,8 +477,8 @@ vec3 trace()
 	{
 		// By jittering the uv-coordinates a tiny bit here, we get 
 		// "free" anti-aliasing.
-		vec2 jitter = vec2(rand_dynamic(uv + j), rand_dynamic(uv + j + 100.0));
-		uv += (jitter / push_constants.resolution);
+		vec2 jitter = vec2(rand_dynamic(uv + j), rand_dynamic(uv + j + 100.0)) * 2.0 - 1.0;
+		uv += (jitter / push_constants.resolution) * anti_aliasing;
 
 		// Calculate the ray direction based on the current fragment's
 		// uv-coordinates. All rays will originate from the camera's
@@ -532,7 +533,7 @@ vec3 trace()
 											vec3(1.0, 1.0, 1.0), 
 											vec3(0.00, 0.33, 0.67));
 					
-					color += emissive * accumulated * pct;
+					color += white * accumulated * pct;
 				}
 
 				accumulated *= 2.0 * planes[itr.object_index].albedo;
