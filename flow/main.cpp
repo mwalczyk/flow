@@ -586,7 +586,15 @@ public:
 
 	void initialize_command_pool()
 	{
-		command_pool = device->createCommandPoolUnique(vk::CommandPoolCreateInfo{ vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queue_family_index });
+		// Create the command pool with two flags. The first indicates that command buffers allocated from this pool may be
+		// reset individually. Without it, we can't re-record the same command buffer multiple times. The second tells the
+		// driver that command buffers allocated from this pool will be re-recorded frequently. This helps optimize command
+		// buffer allocation.
+		command_pool = device->createCommandPoolUnique(vk::CommandPoolCreateInfo{ 
+			vk::CommandPoolCreateFlagBits::eResetCommandBuffer | 
+			vk::CommandPoolCreateFlagBits::eTransient, 
+			queue_family_index 
+		});
 	}
 
 	void initialize_command_buffers()
