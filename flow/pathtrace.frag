@@ -120,10 +120,10 @@ sphere spheres[] =
 // Create the walls of our scene.
 plane planes[] = 
 {
-	plane(-z_axis,  z_axis * 3.5, white * 0.3), // Back
-	plane( z_axis, -z_axis * 4.5, white * 0.3), // Front
-	plane(-x_axis,  x_axis * 4.5, white * 0.3), // Left
-	plane( x_axis, -x_axis * 4.5, white * 0.3), // Right
+	plane(-z_axis,  z_axis * 3.5, white * 0.4), // Back
+	plane( z_axis, -z_axis * 4.5, white * 0.4), // Front
+	plane(-x_axis,  x_axis * 4.5, white * 0.4), // Left
+	plane( x_axis, -x_axis * 4.5, white * 0.4), // Right
 };
 
 /****************************************************************************************************
