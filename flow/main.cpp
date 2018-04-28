@@ -456,58 +456,58 @@ public:
 		// Create all of the structs used for pipeline creation: the only thing different between the two
 		// pipelines will be the `vk::PipelineShaderStageCreateInfo` below
 		const char* entry_point = "main";
-		auto vs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vs_module_quad.get(), entry_point };
-		auto fs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_pathtrace.get(), entry_point };
-		vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] = { vs_stage_create_info, fs_stage_create_info };
+auto vs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vs_module_quad.get(), entry_point };
+auto fs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_pathtrace.get(), entry_point };
+vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] = { vs_stage_create_info, fs_stage_create_info };
 
-		auto vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo{};
+auto vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo{};
 
-		auto input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo{ {}, vk::PrimitiveTopology::eTriangleList };
+auto input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo{ {}, vk::PrimitiveTopology::eTriangleList };
 
-		const float min_depth = 0.0f;
-		const float max_depth = 1.0f;
-		const vk::Viewport viewport{ 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), min_depth, max_depth };
-		const vk::Rect2D scissor{ { 0, 0 }, swapchain_extent };
-		auto viewport_state_create_info = vk::PipelineViewportStateCreateInfo{ {}, 1, &viewport, 1, &scissor };
+const float min_depth = 0.0f;
+const float max_depth = 1.0f;
+const vk::Viewport viewport{ 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), min_depth, max_depth };
+const vk::Rect2D scissor{ { 0, 0 }, swapchain_extent };
+auto viewport_state_create_info = vk::PipelineViewportStateCreateInfo{ {}, 1, &viewport, 1, &scissor };
 
-		auto rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo{}
-			.setFrontFace(vk::FrontFace::eClockwise)
-			.setCullMode(vk::CullModeFlagBits::eBack)
-			.setLineWidth(1.0f);
+auto rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo{}
+.setFrontFace(vk::FrontFace::eClockwise)
+.setCullMode(vk::CullModeFlagBits::eBack)
+.setLineWidth(1.0f);
 
-		auto multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo{};
-		
-		auto color_blend_attachment_state = vk::PipelineColorBlendAttachmentState{}
-			.setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+auto multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo{};
 
-		auto color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo{}
-			.setPAttachments(&color_blend_attachment_state)
-			.setAttachmentCount(1);
+auto color_blend_attachment_state = vk::PipelineColorBlendAttachmentState{}
+.setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
 
-		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo{}
-			.setPStages(shader_stage_create_infos)
-			.setStageCount(2)
-			.setPVertexInputState(&vertex_input_state_create_info)
-			.setPInputAssemblyState(&input_assembly_create_info)
-			.setPViewportState(&viewport_state_create_info)
-			.setPRasterizationState(&rasterization_state_create_info)
-			.setPMultisampleState(&multisample_state_create_info)
-			.setPColorBlendState(&color_blend_state_create_info)
-			.setLayout(pipeline_layout.get())
-			.setRenderPass(render_pass.get())
-			.setSubpass(0);
+auto color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo{}
+.setPAttachments(&color_blend_attachment_state)
+.setAttachmentCount(1);
 
-		// Create the pipeline for pathtracing
-		pipeline_pathtrace = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
+auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo{}
+.setPStages(shader_stage_create_infos)
+.setStageCount(2)
+.setPVertexInputState(&vertex_input_state_create_info)
+.setPInputAssemblyState(&input_assembly_create_info)
+.setPViewportState(&viewport_state_create_info)
+.setPRasterizationState(&rasterization_state_create_info)
+.setPMultisampleState(&multisample_state_create_info)
+.setPColorBlendState(&color_blend_state_create_info)
+.setLayout(pipeline_layout.get())
+.setRenderPass(render_pass.get())
+.setSubpass(0);
 
-		// Switch the fragment shader module and subpass index
-		shader_stage_create_infos[1] = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_composite.get(), entry_point };
-		graphics_pipeline_create_info.setSubpass(1);
-		pipeline_composite = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
+// Create the pipeline for pathtracing
+pipeline_pathtrace = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
 
-		LOG_DEBUG("Created graphics pipelines");
+// Switch the fragment shader module and subpass index
+shader_stage_create_infos[1] = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_composite.get(), entry_point };
+graphics_pipeline_create_info.setSubpass(1);
+pipeline_composite = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
+
+LOG_DEBUG("Created graphics pipelines");
 	}
-	
+
 	void initialize_ping_pong_images()
 	{
 		// We want to create two floating-point images that can be used as both color attachments (i.e. render targets) and combined image samplers
@@ -517,10 +517,10 @@ public:
 			.setExtent({ width, height, 1 })
 			.setMipLevels(1)
 			.setArrayLayers(1)
-			.setUsage(vk::ImageUsageFlagBits::eColorAttachment | 
-					  vk::ImageUsageFlagBits::eSampled | 
-					  vk::ImageUsageFlagBits::eInputAttachment | /* Required for second subpass */
-					  vk::ImageUsageFlagBits::eTransferDst /* Required for the clear color command to work */);
+			.setUsage(vk::ImageUsageFlagBits::eColorAttachment |
+				vk::ImageUsageFlagBits::eSampled |
+				vk::ImageUsageFlagBits::eInputAttachment | /* Required for second subpass */
+				vk::ImageUsageFlagBits::eTransferDst /* Required for the clear color command to work */);
 
 		image_a = device->createImageUnique(image_create_info);
 		image_b = device->createImageUnique(image_create_info);
@@ -542,15 +542,29 @@ public:
 		auto memory_requirements_a = device->getImageMemoryRequirements(image_a.get());
 		auto memory_requirements_b = device->getImageMemoryRequirements(image_b.get());
 
+		// Allocate memory that is owned by the device
+		auto desired_flags = vk::MemoryPropertyFlagBits::eDeviceLocal;
 		auto memory_properties = physical_device.getMemoryProperties();
+		auto chosen_memory_type_index = std::numeric_limits<uint32_t>::max();
+
 		for (size_t i = 0; i < memory_properties.memoryTypeCount; ++i)
-		{	
-			// TODO
+		{
+			if ((memory_requirements_a.memoryTypeBits & (1 << i)) &&
+				(memory_requirements_b.memoryTypeBits & (1 << i)) &&
+				(memory_properties.memoryTypes[i].propertyFlags & desired_flags) == desired_flags)
+			{
+				chosen_memory_type_index = i;
+			}
 		}
+		if (chosen_memory_type_index == std::numeric_limits<uint32_t>::max())
+		{
+			throw std::runtime_error("Could not find suitable memory type for allocation");
+		}
+		LOG_DEBUG("Allocated device memory from index: " << chosen_memory_type_index);
 
 		// Allocate the device memory that will be shared between the two images
 		auto total_memory_size = memory_requirements_a.size + memory_requirements_b.size;
-		auto memory_allocation_info = vk::MemoryAllocateInfo{ total_memory_size, 1 /* TODO: this should not be hardcoded */ };
+		auto memory_allocation_info = vk::MemoryAllocateInfo{ total_memory_size, chosen_memory_type_index };
 		device_memory_ab = device->allocateMemoryUnique(memory_allocation_info);
 
 		// Bind the device memory to each of the two images, with the appropriate offsets
