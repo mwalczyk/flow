@@ -120,10 +120,10 @@ sphere spheres[] =
 // Create the walls of our scene.
 plane planes[] = 
 {
-	plane(-z_axis,  z_axis * 3.5, white * 0.4), // Back
-	plane( z_axis, -z_axis * 4.5, white * 0.4), // Front
-	plane(-x_axis,  x_axis * 4.5, white * 0.4), // Left
-	plane( x_axis, -x_axis * 4.5, white * 0.4), // Right
+	plane(-z_axis,  z_axis * 3.5, white * 0.8), // Back
+	plane( z_axis, -z_axis * 4.5, white * 0.8), // Front
+	plane(-x_axis,  x_axis * 4.5, white * 0.8), // Left
+	plane( x_axis, -x_axis * 4.5, white * 0.8), // Right
 };
 
 /****************************************************************************************************
@@ -131,19 +131,21 @@ plane planes[] =
  * Utilities
  *
  ***************************************************************************************************/
-float rand_stable(in vec2 seed)
+// PRNG based on a weighted sum of four instances of the multiplicative linear congruential 
+// generator from the following paper: https://arxiv.org/pdf/1505.06022.pdf
+float gpu_rnd(inout vec4 state) 
 {
-	// There are a lot of ways to generate random numbers in GLSL, but this
-	// one-liner is the one that I am most familiar with. See the S.O. post
-	// here: https://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
-	return fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453);
-}
+	const vec4 q = vec4(1225, 1585, 2457, 2098);
+	const vec4 r = vec4(1112, 367, 92, 265);
+	const vec4 a = vec4(3423, 2646, 1707, 1999);
+	const vec4 m = vec4(4194287, 4194277, 4194191, 4194167);
 
-float rand_dynamic(in vec2 seed) 
-{	
-	// This is the same as the function above, except we change the random 
-	// values over time by adding the uniform time.
-    return fract(sin(dot(seed, vec2(12.9898, 78.233) + push_constants.time)) * 43758.5453);
+	vec4 beta = floor(state / q);
+	vec4 p = a * mod(state, q) - beta * r;
+	beta = (sign(-p) + vec4(1.0)) * vec4(0.5) * m;
+	state = p + beta;
+
+	return fract(dot(state / m, vec4(1.0, -1.0, 1.0, -1.0)));
 }
 
 vec3 palette(in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d)
@@ -173,7 +175,8 @@ mat3 lookat(in vec3 view_point, in vec3 target)
 	return mat3(camera_x, camera_y, camera_z);
 }
 
-vec3 hemisphere(in vec3 normal, in vec2 seed) 
+// See: https://computergraphics.stackexchange.com/questions/2431/role-of-pdf-of-uniform-random-sampling-in-a-path-tracer?rq=1
+vec3 hemisphere(in vec3 normal, float rand_a, float rand_b) 
 {
 	// Explained here: https://www.scratchapixel.com/lessons/3d-basic-rendering/global-illumination-path-tracing/global-illumination-path-tracing-practical-implementation
 	const float offset = 100.0;
@@ -207,9 +210,9 @@ vec3 hemisphere(in vec3 normal, in vec2 seed)
 	//		y = r * sin(phi) * sin(theta)
 	//		z = r * cos(theta)
 	//
-    float z = rand_dynamic(seed);
+    float z = rand_a;
     float sin_theta = sqrt(1.0 - z * z);
-    float phi = 2.0 * pi * rand_dynamic(seed + offset);
+    float phi = 2.0 * pi * rand_b;
     float x = cos(phi) * sin_theta;
     float y = sin(phi) * sin_theta;
 
@@ -351,22 +354,22 @@ bool intersect_plane(in plane pln, in ray r, out float t)
  * Materials
  *
  ***************************************************************************************************/
-vec3 scatter_diffuse(in vec3 point, in vec3 incident, in vec3 normal, in vec2 seed)
+vec3 scatter_diffuse(in vec3 point, in vec3 incident, in vec3 normal, float rand_a, float rand_b)
 {
-	vec3 rand_hemi = normalize(hemisphere(normal, seed));
+	vec3 rand_hemi = normalize(hemisphere(normal, rand_a, rand_b));
 
 	return rand_hemi;
 }
 
-vec3 scatter_metallic(in vec3 point, in vec3 incident, in vec3 normal, in vec2 seed, in float roughness)
+vec3 scatter_metallic(in vec3 point, in vec3 incident, in vec3 normal, float rand_a, float rand_b, in float roughness)
 {
-	vec3 rand_hemi = normalize(hemisphere(normal, seed));
+	vec3 rand_hemi = normalize(hemisphere(normal, rand_a, rand_b));
 	vec3 reflected = reflect(incident, normal);
 
 	return mix(rand_hemi, reflected, roughness);
 }
 
-vec3 scatter_dielectric(in vec3 point, in vec3 incident, in vec3 normal, in vec2 seed, in float ior)
+vec3 scatter_dielectric(in vec3 point, in vec3 incident, in vec3 normal, float rand_a, float rand_b, in float ior)
 {
 	// TODO
 	return miss;
@@ -473,11 +476,20 @@ vec3 trace()
 
 	vec3 final = black;
 
+	float t = push_constants.time;
+	vec4 seed = vec4(uv.x + t * 41.13, 
+		             uv.y + t * 113.0, 
+		             uv.x - t * 7.57, 
+		             uv.y - t * 67.0);
+
 	for (uint j = 0; j < number_of_iterations; ++j)
 	{
 		// By jittering the uv-coordinates a tiny bit here, we get 
 		// "free" anti-aliasing.
-		vec2 jitter = vec2(rand_dynamic(uv + j), rand_dynamic(uv + j + 100.0)) * 2.0 - 1.0;
+		float jitter_x = gpu_rnd(seed);
+		float jitter_y = gpu_rnd(seed);
+		vec2 jitter = vec2(jitter_x, jitter_y) * 2.0 - 1.0;
+
 		uv += (jitter / push_constants.resolution) * anti_aliasing;
 
 		// Calculate the ray direction based on the current fragment's
@@ -501,11 +513,15 @@ vec3 trace()
 			vec3 incident = r.direction;
 
 			// Per-bounce random seed
-			const vec2 seed = gl_FragCoord.xy + i + j * 100.0;
+			float seed_a = gpu_rnd(seed);
+			float seed_b = gpu_rnd(seed);
 
-			vec3 bounce = scatter_diffuse(itr.position, r.direction, itr.normal, seed);
+			// Bounce
+			vec3 bounce = scatter_diffuse(itr.position, r.direction, itr.normal, seed_a, seed_b);
 			r.origin = itr.position + itr.normal * epsilon;
 			r.direction = bounce;
+
+			float cos_theta = max(0.0, dot(itr.normal, r.direction));
 
 			// Based on the type of object that was hit, we can choose how to
 			// react.
@@ -515,10 +531,16 @@ vec3 trace()
 
 				if (itr.object_index == 1)
 				{
-					r.direction = scatter_metallic(itr.position, incident, itr.normal, seed, 1.0);
+					r.direction = scatter_metallic(itr.position, incident, itr.normal, seed_a, seed_b, 1.0);
+
+					// Specular
+					accumulated *= spheres[itr.object_index].albedo;
+				}
+				else {
+					// Diffuse
+					accumulated *= 2.0 * spheres[itr.object_index].albedo * cos_theta;
 				}
 
-				accumulated *= 2.0 * spheres[itr.object_index].albedo;
 				break;
 
 			case object_type_plane:
@@ -533,10 +555,10 @@ vec3 trace()
 											vec3(1.0, 1.0, 1.0), 
 											vec3(0.00, 0.33, 0.67));
 					
-					color += white * accumulated * pct;
+					color += white * 2.0 * accumulated * pct;
 				}
 
-				accumulated *= 2.0 * planes[itr.object_index].albedo;
+				accumulated *= 2.0 * planes[itr.object_index].albedo * cos_theta;
 				break;
 
 			case object_type_miss:
@@ -546,7 +568,7 @@ vec3 trace()
 			}
 		}
 
-		final += color;
+		final += color; // TODO: not needed? / float(number_of_bounces);
 	}
 
 	return final / float(number_of_iterations);
