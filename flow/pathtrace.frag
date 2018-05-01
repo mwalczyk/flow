@@ -22,8 +22,8 @@ layout(location = 0) out vec4 o_color;
 const float pi = 3.1415926535897932384626433832795;
 const float gamma = 1.0 / 2.2;
 const float anti_aliasing = 0.75;
-const uint number_of_iterations = 10;
-const uint number_of_bounces = 5;
+const uint number_of_iterations = 20;
+const uint number_of_bounces = 4;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
 
@@ -106,7 +106,7 @@ struct plane
  *
  ***************************************************************************************************/
 const uint number_of_spheres = 4;
-const uint number_of_planes = 4;
+const uint number_of_planes = 5;
 
 // Some spheres on the ground.
 sphere spheres[] = 
@@ -124,6 +124,8 @@ plane planes[] =
 	plane( z_axis, -z_axis * 4.5, white * 0.8), // Front
 	plane(-x_axis,  x_axis * 4.5, white * 0.8), // Left
 	plane( x_axis, -x_axis * 4.5, white * 0.8), // Right
+
+	plane(-z_axis,  z_axis * 2.5, white * 0.8), // Light
 };
 
 /****************************************************************************************************
@@ -536,8 +538,14 @@ vec3 trace()
 					// Specular
 					accumulated *= spheres[itr.object_index].albedo;
 				}
-				else {
-					// Diffuse
+				else 
+				{
+					// We want to divide by the PDF, which is: 1/2π. However, for a diffuse
+					// (Lambertian) material, we always multiply the incoming light by the
+					// surface color (albedo) divided by π (normalization constant). So, 
+					// we end up just multiply by 2, as shown here:
+					// 
+					// http://richiesams.blogspot.co.nz/2015/04/making-our-first-pretty-picture.html
 					accumulated *= 2.0 * spheres[itr.object_index].albedo * cos_theta;
 				}
 
@@ -546,7 +554,9 @@ vec3 trace()
 			case object_type_plane:
 				
 				// The back plane is emissive
-				if (itr.object_index == 0) 
+				if (itr.object_index == 4 && 
+					abs(itr.position.x) < 4.0 &&
+					abs(itr.position.y + 2.0) < 2.0)  
 				{	
 					float pct = step(1.0, mod(itr.position.x * 2.0 + 0.5, 2.0)); 
 					vec3 emissive = palette(itr.position.x * 0.1, 
@@ -555,10 +565,16 @@ vec3 trace()
 											vec3(1.0, 1.0, 1.0), 
 											vec3(0.00, 0.33, 0.67));
 					
-					color += white * 2.0 * accumulated * pct;
+					color += emissive * 1.5 * accumulated;
+					
+					// Exit
+					i = number_of_bounces;
 				}
-
-				accumulated *= 2.0 * planes[itr.object_index].albedo * cos_theta;
+				else
+				{
+					accumulated *= 2.0 * planes[itr.object_index].albedo * cos_theta;
+				}
+				
 				break;
 
 			case object_type_miss:
