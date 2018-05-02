@@ -1,5 +1,6 @@
-#version 450
+#version 460
 #extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_shading_language_420pack : enable 
 
 layout(set = 0, binding = 0) uniform sampler2D u_image;
 
@@ -32,47 +33,45 @@ const float max_distance = 10000.0;
  * Vector Constants
  *
  ***************************************************************************************************/
-const vec3 x_axis = vec3(1.0, 0.0, 0.0);
-const vec3 y_axis = vec3(0.0, 1.0, 0.0);
-const vec3 z_axis = vec3(0.0, 0.0, 1.0);
-const vec3 origin = vec3(0.0);
-const vec3 miss = vec3(-1.0);
-const vec3 black = vec3(0.0);
-const vec3 white = vec3(1.0);
-const vec3 red = vec3(1.0, 0.0, 0.0);
-const vec3 green = vec3(0.0, 1.0, 0.0);
-const vec3 blue = vec3(0.0, 0.0, 1.0);
+const vec3 x_axis = { 1.0, 0.0, 0.0 };
+const vec3 y_axis = { 0.0, 1.0, 0.0 };
+const vec3 z_axis = { 0.0, 0.0, 1.0 };
+const vec3 origin = { 0.0, 0.0, 0.0 };
+const vec3 miss = { -1.0, -1.0, -1.0 };
+const vec3 black = { 0.0, 0.0, 0.0 };
+const vec3 white = { 1.0, 1.0, 1.0 };
+const vec3 red = { 1.0, 0.0, 0.0 };
+const vec3 green = { 0.0, 1.0, 0.0 };
+const vec3 blue = { 0.0, 0.0, 1.0 };
+const float _ignored = -1.0;
 
 /****************************************************************************************************
  *
  * Material Definitions
  *
  ***************************************************************************************************/
-const float _ignored = -1.0;
-
 const int material_type_diffuse = 0;
 const int material_type_metallic = 1;
 const int material_type_dielectric = 2;
 
 struct material 
 {
-	// The primary color of the material
-	vec3 alebdo;
-
-	// The "glossiness" of the material, where a value of 0.0 is full roughness. Note
-	// that this parameter only affects materials of type `material_type_metallic`.
-	float roughness;
-
-	// The index of refraction of the material. Note that this parameter only affects
-	// materials of type `material_type_dielectric`.
-	float ior;
+	// The primary color of a Lambertian material: must be divided by π so that it 
+	// integrates to 1, as explained here: https://seblagarde.wordpress.com/tag/lambertian-surface/
+	vec3 reflectivity;
 
 	// An integer denoting the type of the material (diffuse, metallic, etc.).
 	int type;
 };
 
-material materials[] = {
-	material(white, _ignored, _ignored, material_type_diffuse)
+material materials[] = 
+{
+	{ { 1.00, 0.80, 0.80 }, material_type_diffuse },
+	{ { 0.90, 0.80, 0.10 }, material_type_metallic },
+	{ { 0.90, 0.10, 0.20 }, material_type_diffuse },
+	{ { 0.75, 0.75, 0.60 }, material_type_diffuse },
+
+	{ white * 0.8, material_type_diffuse }
 };
 
 /****************************************************************************************************
@@ -80,24 +79,27 @@ material materials[] = {
  * Primitive Definitions
  *
  ***************************************************************************************************/
-
-// NOTE: There are definitely more elegant ways to handle materials here -
-// I just wanted to keep this part simple for now.
-//
-// A sphere has a radius, center position, and color (albedo).
 struct sphere
 {
 	float radius;
 	vec3 center;
-	vec3 albedo;
+	int material_index;
 };
 
-// A plane has a normal, center position, and color (albedo).
 struct plane
 {
 	vec3 normal;
 	vec3 center;
-	vec3 albedo;
+	int material_index;
+};
+
+struct area_light 
+{
+	vec3 ul;
+	vec3 ur;
+	vec3 lr;
+	vec3 ll;
+	vec3 intensity;
 };
 
 /****************************************************************************************************
@@ -105,27 +107,29 @@ struct plane
  * Scene Definition
  *
  ***************************************************************************************************/
-const uint number_of_spheres = 4;
-const uint number_of_planes = 5;
-
-// Some spheres on the ground.
 sphere spheres[] = 
 {
-	sphere(100.0, vec3(0.0, 100.9, 0.0), vec3(1.00, 0.80, 0.80)), // Ground
-	sphere(0.55, vec3(-1.4,  0.4, -1.3), vec3(0.90, 0.80, 0.10)),
-	sphere(0.20, vec3( 1.0,  0.7, -1.6), vec3(0.90, 0.10, 0.20)),
-	sphere(1.50, vec3( 0.0, -0.6,  0.0), vec3(0.75, 0.75, 0.60))
+	{ 100.0, vec3(0.0, 100.9, 0.0), 0 }, // Ground
+	{ 0.55, vec3(-1.4,  0.4, -1.3), 1 },
+	{ 0.20, vec3( 1.0,  0.7, -1.6), 2 },
+	{ 1.50, vec3( 0.0, -0.6,  0.0), 3 }
 };
 
-// Create the walls of our scene.
 plane planes[] = 
 {
-	plane(-z_axis,  z_axis * 3.5, white * 0.8), // Back
-	plane( z_axis, -z_axis * 4.5, white * 0.8), // Front
-	plane(-x_axis,  x_axis * 4.5, white * 0.8), // Left
-	plane( x_axis, -x_axis * 4.5, white * 0.8), // Right
+	{ -z_axis,  z_axis * 3.5, 5 }, // Back
+	{  z_axis, -z_axis * 4.5, 5 }, // Front
+	{ -x_axis,  x_axis * 4.5, 5 }, // Left
+	{  x_axis, -x_axis * 4.5, 5 }, // Right
+};
 
-	plane(-z_axis,  z_axis * 2.5, white * 0.8), // Light
+area_light scene_light = 
+{
+	{ -4.0,  0.0, 2.5 }, // ul
+	{  4.0,  0.0, 2.5 }, // ur
+	{  4.0, -4.0, 2.5 }, // lr
+	{ -4.0, -4.0, 2.5 }, // ll
+	white
 };
 
 /****************************************************************************************************
@@ -254,26 +258,42 @@ vec3 hemisphere(in vec3 normal, float rand_a, float rand_b)
     return normalize(local_x * x + local_y * y + local_z * z);
 }
 
+float total_area(in area_light light)
+{
+	vec3 edge0 = light.ur - light.ul;
+	vec3 edge1 = light.ll - light.ul;
+
+	return length(edge0) * length(edge1);
+}
+
+vec3 sample_light(in area_light light, float rand_a, float rand_b)
+{
+	vec3 edge0 = light.ur - light.ul;
+	vec3 edge1 = light.ll - light.ul;
+
+	vec3 pt = edge0 * rand_a + edge1 * rand_b;
+	pt.z = 2.5;
+	return pt;
+}
+
 /****************************************************************************************************
  *
  * Intersection Routines
  *
  ***************************************************************************************************/
- 
- // A ray has an origin and direction, which should be a unit vector.
- struct ray
- {
- 	vec3 origin;
- 	vec3 direction;
- };
+struct ray
+{
+	vec3 origin;
+	vec3 direction;
+};
 
- vec3 get_point_at(in ray r, float t)
- {
- 	// This is the parametric equation for a ray. Given a scalar value
- 	// `t`, it returns a point along the ray. We will use this throughout
- 	// the path tracing algorithm.
- 	return r.origin + r.direction * t;
- }
+vec3 get_point_at(in ray r, float t)
+{
+	// This is the parametric equation for a ray. Given a scalar value
+	// `t`, it returns a point along the ray. We will use this throughout
+	// the path tracing algorithm.
+	return r.origin + r.direction * t;
+}
 
 bool intersect_sphere(in sphere sph, in ray r, out float t)
 {
@@ -351,38 +371,33 @@ bool intersect_plane(in plane pln, in ray r, out float t)
 	return false;
 }
 
-/****************************************************************************************************
- *
- * Materials
- *
- ***************************************************************************************************/
-vec3 scatter_diffuse(in vec3 point, in vec3 incident, in vec3 normal, float rand_a, float rand_b)
-{
-	vec3 rand_hemi = normalize(hemisphere(normal, rand_a, rand_b));
+bool intersect_area_light(in area_light light, in ray r, out float t)
+{	
+	// See: https://stackoverflow.com/questions/21114796/3d-ray-quad-intersection-test-in-java
+	vec3 edge0 = light.ur - light.ul;
+	vec3 edge1 = light.ll - light.ul;
+	vec3 normal = normalize(cross(edge0, edge1));
 
-	return rand_hemi;
+	plane pln = plane(normal, vec3(light.ur), 0);
+
+	float temp_t;
+	if (intersect_plane(pln, r, temp_t))
+	{
+		vec3 m = r.origin + r.direction * temp_t;
+
+		float u = dot(m - light.ul, edge0);
+		float v = dot(m - light.ul, edge1);
+
+		if (u >= epsilon && v >= epsilon &&
+			u <= dot(edge0, edge0) && v <= dot(edge1, edge1))
+		{
+			t = temp_t;
+			return true;	
+		}
+	}
+
+	return false;
 }
-
-vec3 scatter_metallic(in vec3 point, in vec3 incident, in vec3 normal, float rand_a, float rand_b, in float roughness)
-{
-	vec3 rand_hemi = normalize(hemisphere(normal, rand_a, rand_b));
-	vec3 reflected = reflect(incident, normal);
-
-	return mix(rand_hemi, reflected, roughness);
-}
-
-vec3 scatter_dielectric(in vec3 point, in vec3 incident, in vec3 normal, float rand_a, float rand_b, in float ior)
-{
-	// TODO
-	return miss;
-}
-
-vec3 scatter(in ray r, in material mat)
-{
-	// TODO
-	return miss;
-}
-
 
 /****************************************************************************************************
  *
@@ -394,17 +409,20 @@ vec3 scatter(in ray r, in material mat)
 const int object_type_miss = -1;
 const int object_type_sphere = 0;
 const int object_type_plane = 1; 
+const int object_type_area_light = 2;
 
 // An intersection holds several values:
-// - A numeric identifier describing the type of object that was hit (`object_type`)
-// - A numeric identifier describing the index of the object that was hit (`object_index`)
+// - The material index of the object that was hit (`material_index`)
+// - The type of object that was hit (or a miss)
+// - The direction vector of the incident ray
 // - The location of intersection in world space (`position`)
 // - The `normal` vector of the object that was hit, calculated at `position`
 // - A scalar value `t`, which denotes a point along the incident ray
 struct intersection 
 {
+	int material_index;
 	int object_type;
-	int object_index;
+	vec3 incident;
 	vec3 position;
 	vec3 normal;
 	float t;
@@ -420,14 +438,19 @@ intersection intersect_scene(in ray r)
 	//
 	// Initially, we assume that we won't hit anything by setting the fields
 	// of our `intersection` struct as follows:
-	intersection inter;
-	inter.object_type = object_type_miss;
-	inter.object_index = -1;
-	inter.t = max_distance;
+	intersection inter = 
+	{
+		-1,
+		object_type_miss,
+		r.direction,
+		r.origin,
+		{ -1.0, -1.0, -1.0 },
+		max_distance
+	};
 
 	// Now, let's iterate through the objects in our scene, starting with 
 	// the spheres:
-	for(int i = 0; i < number_of_spheres; ++i)
+	for(int i = 0; i < spheres.length(); ++i)
 	{	
 		// Did the ray intersect this object?
 		float temp_t;
@@ -436,8 +459,8 @@ intersection intersect_scene(in ray r)
 			// Was the intersection closer than any previous one?
 			if (temp_t < inter.t)
 			{
+				inter.material_index = spheres[i].material_index;
 				inter.object_type = object_type_sphere;
-				inter.object_index = i;
 				inter.position = r.origin + r.direction * temp_t;
 				inter.normal = normalize(inter.position - spheres[i].center);
 				inter.t = temp_t;
@@ -446,7 +469,7 @@ intersection intersect_scene(in ray r)
 	}
 
 	// then planes:
-	for(int i = 0; i < number_of_planes; ++i)
+	for(int i = 0; i < planes.length(); ++i)
 	{	
 		// Did the ray intersect this object?
 		float temp_t;
@@ -455,8 +478,8 @@ intersection intersect_scene(in ray r)
 			// Was the intersection closer than any previous one?
 			if (temp_t < inter.t)
 			{
+				inter.material_index = planes[i].material_index;
 				inter.object_type = object_type_plane;
-				inter.object_index = i;
 				inter.position = r.origin + r.direction * temp_t;
 				inter.normal = normalize(planes[i].normal);
 				inter.t = temp_t;
@@ -464,7 +487,30 @@ intersection intersect_scene(in ray r)
 		} 
 	}
 
+	// and our single light source:
+	float temp_t;
+	if (intersect_area_light(scene_light, r, temp_t))
+	{
+		if (temp_t < inter.t)
+		{
+			inter.material_index = -1;
+			inter.object_type = object_type_area_light;
+			inter.position = r.origin + r.direction * temp_t;
+			inter.normal = -z_axis;
+			inter.t = temp_t;
+		}
+	}
+
 	return inter;
+}
+
+vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
+{
+	vec3 rand_hemi = normalize(hemisphere(inter.normal, rand_a, rand_b));
+	vec3 reflected = reflect(inter.incident, inter.normal);
+
+	// Diffuse is 0, metallic is 1.
+	return mix(rand_hemi, reflected, mtl.type);
 }
 
 vec3 trace()
@@ -476,22 +522,20 @@ vec3 trace()
 	vec2 uv = (gl_FragCoord.xy / push_constants.resolution) * 2.0 - 1.0;
 	uv.x *= aspect_ratio;
 
-	vec3 final = black;
-
 	float t = push_constants.time;
-	vec4 seed = vec4(uv.x + t * 41.13, 
-		             uv.y + t * 113.0, 
-		             uv.x - t * 7.57, 
-		             uv.y - t * 67.0);
+	vec4 seed = { uv.x + t * 41.13, 
+	              uv.y + t * 113.0, 
+	              uv.x - t * 7.57, 
+	              uv.y - t * 67.0 };
+	
+	vec3 final = black;
 
 	for (uint j = 0; j < number_of_iterations; ++j)
 	{
 		// By jittering the uv-coordinates a tiny bit here, we get 
 		// "free" anti-aliasing.
-		float jitter_x = gpu_rnd(seed);
-		float jitter_y = gpu_rnd(seed);
-		vec2 jitter = vec2(jitter_x, jitter_y) * 2.0 - 1.0;
-
+		vec2 jitter = { gpu_rnd(seed), gpu_rnd(seed) };
+		jitter = jitter * 2.0 - 1.0;
 		uv += (jitter / push_constants.resolution) * anti_aliasing;
 
 		// Calculate the ray direction based on the current fragment's
@@ -504,87 +548,73 @@ vec3 trace()
 		ray r = ray(ro, rd);
 
 		// Define some colors.
-		vec3 sky = black;
+		const vec3 sky = black;
 		vec3 color = black;
 		vec3 accumulated = white;
 
 		// This is the main path tracing loop.
 		for (uint i = 0; i < number_of_bounces; ++i)
 		{	
-			intersection itr = intersect_scene(r);
-			vec3 incident = r.direction;
+			intersection inter = intersect_scene(r);
 
-			// Per-bounce random seed
+			// Generate a pair of per-bounce random seeds.
 			float seed_a = gpu_rnd(seed);
 			float seed_b = gpu_rnd(seed);
+			bool nee = false;
 
-			// Bounce
-			vec3 bounce = scatter_diffuse(itr.position, r.direction, itr.normal, seed_a, seed_b);
-			r.origin = itr.position + itr.normal * epsilon;
-			r.direction = bounce;
-
-			float cos_theta = max(0.0, dot(itr.normal, r.direction));
-
-			// Based on the type of object that was hit, we can choose how to
-			// react.
-			switch(itr.object_type)
+			if (inter.object_type == object_type_miss)
 			{
-			case object_type_sphere:
-
-				if (itr.object_index == 1)
-				{
-					r.direction = scatter_metallic(itr.position, incident, itr.normal, seed_a, seed_b, 1.0);
-
-					// Specular
-					accumulated *= spheres[itr.object_index].albedo;
-				}
-				else 
-				{
-					// We want to divide by the PDF, which is: 1/2π. However, for a diffuse
-					// (Lambertian) material, we always multiply the incoming light by the
-					// surface color (albedo) divided by π (normalization constant). So, 
-					// we end up just multiply by 2, as shown here:
-					// 
-					// http://richiesams.blogspot.co.nz/2015/04/making-our-first-pretty-picture.html
-					accumulated *= 2.0 * spheres[itr.object_index].albedo * cos_theta;
-				}
-
-				break;
-
-			case object_type_plane:
-				
-				// The back plane is emissive
-				if (itr.object_index == 4 && 
-					abs(itr.position.x) < 4.0 &&
-					abs(itr.position.y + 2.0) < 2.0)  
-				{	
-					float pct = step(1.0, mod(itr.position.x * 0.5 + 0.5, 2.0)); 
-					vec3 emissive = palette(itr.position.x * 0.05, 
-											vec3(0.5, 0.5, 0.5), 
-											vec3(0.5, 0.5, 0.5), 
-											vec3(1.0, 1.0, 1.0), 
-											vec3(0.00, 0.33, 0.67));
-					
-					color += emissive * 1.5 * accumulated;
-					
-					// Exit
-					i = number_of_bounces;
-				}
-				else
-				{
-					accumulated *= 2.0 * planes[itr.object_index].albedo * cos_theta;
-				}
-				
-				break;
-
-			case object_type_miss:
-
 				color += accumulated * sky;
 				break;
 			}
+			else if (inter.object_type == object_type_area_light)
+			{
+				color += scene_light.intensity * accumulated;
+				break;
+			}
+
+			// Calculate the origin and direction of the new, scattered ray.
+			material mtl = materials[inter.material_index];
+			r.origin = inter.position + inter.normal * epsilon;
+			r.direction = scatter(mtl, inter, seed_a, seed_b);
+			
+			float cos_theta = max(0.0, dot(inter.normal, r.direction));
+
+			if (mtl.type == material_type_diffuse)
+			{
+				vec3 brdf = mtl.reflectivity / pi;
+				accumulated *= 2.0 * pi * brdf * cos_theta;
+			}
+			else if (mtl.type == material_type_metallic)
+			{
+				accumulated *= mtl.reflectivity;
+			}
+
+
+
+
+
+			if (nee)
+			{
+				// float rand_u = gpu_rnd(seed);
+				// float rand_v = gpu_rnd(seed);
+				// vec3 sample_on_light_source = sample_light(scene_light, rand_u, rand_v);
+				// vec3 normal_at_light_source = -z_axis;
+				// float area = total_area(scene_light);
+				// float dist = distance(itr.position, sample_on_light_source);
+
+				// vec3 to_light_source = normalize(sample_on_light_source - itr.position);
+
+				// float falloff_at_light = max(0.0, dot(normal_at_light_source, -to_light_source));
+				// float falloff_at_current_point = max(0.0, dot(itr.normal, to_light_source));
+
+				// float solid_angle = (falloff_at_light * area) / (dist * dist);
+
+				// color += scene_light.intensity * solid_angle * brdf * falloff_at_current_point;
+			}
 		}
 
-		final += color; // TODO: not needed? / float(number_of_bounces);
+		final += color; 
 	}
 
 	return final / float(number_of_iterations);
