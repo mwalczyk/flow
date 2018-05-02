@@ -22,8 +22,8 @@ layout(location = 0) out vec4 o_color;
 const float pi = 3.1415926535897932384626433832795;
 const float gamma = 1.0 / 2.2;
 const float anti_aliasing = 0.75;
-const uint number_of_iterations = 20;
-const uint number_of_bounces = 4;
+const uint number_of_iterations = 10;
+const uint number_of_bounces = 5;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
 
@@ -558,8 +558,8 @@ vec3 trace()
 					abs(itr.position.x) < 4.0 &&
 					abs(itr.position.y + 2.0) < 2.0)  
 				{	
-					float pct = step(1.0, mod(itr.position.x * 2.0 + 0.5, 2.0)); 
-					vec3 emissive = palette(itr.position.x * 0.1, 
+					float pct = step(1.0, mod(itr.position.x * 0.5 + 0.5, 2.0)); 
+					vec3 emissive = palette(itr.position.x * 0.05, 
 											vec3(0.5, 0.5, 0.5), 
 											vec3(0.5, 0.5, 0.5), 
 											vec3(1.0, 1.0, 1.0), 
