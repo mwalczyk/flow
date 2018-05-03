@@ -22,9 +22,9 @@ layout(location = 0) out vec4 o_color;
  ***************************************************************************************************/
 const float pi = 3.1415926535897932384626433832795;
 const float gamma = 1.0 / 2.2;
-const float anti_aliasing = 0.75;
+const float anti_aliasing = 0.55;
 const uint number_of_iterations = 10;
-const uint number_of_bounces = 5;
+const uint number_of_bounces = 4;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
 
@@ -68,7 +68,7 @@ struct material
 material materials[] = 
 {
 	{ { 1.00, 0.80, 0.80 }, material_type_diffuse },
-	{ { 0.90, 0.80, 0.10 }, material_type_metallic },
+	{ { 0.90, 0.80, 0.10 }, material_type_metallic }, //material_type_metallic },
 	{ { 0.90, 0.10, 0.20 }, material_type_diffuse },
 	{ { 0.75, 0.75, 0.60 }, material_type_diffuse },
 
@@ -118,18 +118,20 @@ sphere spheres[] =
 
 plane planes[] = 
 {
-	{ -z_axis,  z_axis * 3.5, 5 }, // Back
-	{  z_axis, -z_axis * 4.5, 5 }, // Front
-	{ -x_axis,  x_axis * 4.5, 5 }, // Left
-	{  x_axis, -x_axis * 4.5, 5 }, // Right
+	{ -z_axis,  z_axis * 3.5, 4 }, // Back
+	{  z_axis, -z_axis * 4.5, 4 }, // Front
+	{ -x_axis,  x_axis * 4.5, 4 }, // Left
+	{  x_axis, -x_axis * 4.5, 4 }, // Right
+
+	{  y_axis,  -y_axis * 4.5, 4 }, // Top
 };
 
 area_light scene_light = 
 {
-	{ -4.0,  0.0, 2.5 }, // ul
-	{  4.0,  0.0, 2.5 }, // ur
-	{  4.0, -4.0, 2.5 }, // lr
-	{ -4.0, -4.0, 2.5 }, // ll
+	{ -3.0, -3.5,  0.0,  }, // ul
+	{  3.0, -3.5,  0.0,  }, // ur
+	{  3.0, -3.5, -3.0,  }, // lr
+	{ -3.0, -3.5, -3.0,  }, // ll
 	white
 };
 
@@ -259,6 +261,21 @@ vec3 hemisphere(in vec3 normal, float rand_a, float rand_b)
     return normalize(local_x * x + local_y * y + local_z * z);
 }
 
+vec3 cos_weighted_hemisphere( in vec3 n, float rand_a, float rand_b) {
+  	vec2 r = vec2(rand_a, rand_b);
+    
+	vec3  uu = normalize( cross( n, vec3(0.0,1.0,1.0) ) );
+	vec3  vv = cross( uu, n );
+	
+	float ra = sqrt(r.y);
+	float rx = ra*cos(6.2831*r.x); 
+	float ry = ra*sin(6.2831*r.x);
+	float rz = sqrt( 1.0-r.y );
+	vec3  rr = vec3( rx*uu + ry*vv + rz*n );
+    
+    return normalize( rr );
+}
+
 float total_area(in area_light light)
 {
 	vec3 edge0 = light.ur - light.ul;
@@ -273,7 +290,8 @@ vec3 generate_sample_on_light(in area_light light, float rand_a, float rand_b)
 	vec3 edge1 = light.ll - light.ul;
 
 	vec3 pt = edge0 * rand_a + edge1 * rand_b;
-	pt.z = 2.5;
+	pt.y = -3.5;
+	
 	return pt;
 }
 
@@ -507,7 +525,11 @@ intersection intersect_scene(in ray r)
 
 vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 {
-	vec3 rand_hemi = normalize(hemisphere(inter.normal, rand_a, rand_b));
+	//vec3 r1 = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));
+	//vec3 r2 = normalize(hemisphere(inter.normal, rand_a, rand_b));
+	//vec3 r = mix(r1, r2, sin(push_constants.time) * 0.5 + 0.5);
+
+	vec3 rand_hemi = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));;
 	vec3 reflected = reflect(inter.incident, inter.normal);
 
 	// Diffuse is 0, metallic is 1.
@@ -516,22 +538,35 @@ vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 
 vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout vec4 seed)
 {
+	// See: http://www.cs.uu.nl/docs/vakken/magr/2015-2016/slides/lecture%2008%20-%20variance%20reduction.pdf
 	float rand_u = gpu_rnd(seed);
 	float rand_v = gpu_rnd(seed);
-	vec3 sample_on_light_source = generate_sample_on_light(scene_light, rand_u, rand_v);
-	vec3 normal_at_light_source = -z_axis;
+	vec3 position_on_light_source = generate_sample_on_light(scene_light, rand_u, rand_v);
+	vec3 normal_of_light_source = y_axis;
 
-	float area = total_area(scene_light);
-	float dist = distance(position, sample_on_light_source);
+	vec3 to_light_source = normalize(position_on_light_source - position);
 
-	vec3 to_light_source = normalize(sample_on_light_source - position);
+	float falloff_at_light = dot(normal_of_light_source, -to_light_source);
+	float falloff_at_current_point = dot(normal, to_light_source);
 
-	float falloff_at_light = max(0.0, dot(normal_at_light_source, -to_light_source));
-	float falloff_at_current_point = max(0.0, dot(normal, to_light_source));
+	if (falloff_at_light > 0.0 && falloff_at_current_point > 0.0)
+	{
+		ray r = { position, to_light_source };
+		intersection inter = intersect_scene(r);
 
-	float solid_angle = (falloff_at_light * area) / (dist * dist);
+		// Check for occlusions.
+		if (inter.object_type == object_type_area_light)
+		{
+			float area = total_area(scene_light);
+			float dist = distance(position, position_on_light_source);
+			float solid_angle = (falloff_at_light * area) / (dist * dist);
 
-	return scene_light.intensity * solid_angle * brdf * falloff_at_current_point;
+			return scene_light.intensity * solid_angle * brdf * falloff_at_current_point;
+		}
+
+	}
+
+	return black;
 }
 
 vec3 trace()
@@ -566,7 +601,7 @@ vec3 trace()
 		vec3 camera_position = vec3(0.0, -2.0, -4.0) + offset;
 		vec3 ro = camera_position;
 		vec3 rd = normalize(lookat(origin, ro) * vec3(uv, 1.0));
-		ray r = ray(ro, rd);
+		ray r = { ro, rd };
 
 		// Define some colors.
 		const vec3 sky = black;
@@ -581,7 +616,9 @@ vec3 trace()
 			// Generate a pair of per-bounce random seeds.
 			float seed_a = gpu_rnd(seed);
 			float seed_b = gpu_rnd(seed);
-			bool nee = false;
+
+			float x = (gl_FragCoord.x / push_constants.resolution.x);
+			bool next_event_estimation = bool( step(0.5, x) );
 
 			if (inter.object_type == object_type_miss)
 			{
@@ -590,7 +627,15 @@ vec3 trace()
 			}
 			else if (inter.object_type == object_type_area_light)
 			{
-				color += scene_light.intensity * accumulated;
+				if (next_event_estimation && i == 0) 
+				{
+					// Next event estimation - do nothing here!
+					// ...unless it's the first bounce.
+					color += scene_light.intensity * accumulated;
+				}
+				else {
+					color += scene_light.intensity * accumulated;
+				}
 				break;
 			}
 
@@ -610,20 +655,14 @@ vec3 trace()
 				vec3 brdf = mtl.reflectance / pi;
 				accumulated *= 2.0 * pi * brdf * cos_theta;
 
-				//color += sample_light_source(inter.position, inter.normal, in vec3 brdf, inout vec4 seed)
+				if (next_event_estimation)
+				{	
+					color += accumulated * sample_light_source(inter.position, inter.normal, brdf, seed);
+				}	
 			}
 			else if (mtl.type == material_type_metallic)
 			{
 				accumulated *= mtl.reflectance;
-			}
-
-
-
-
-
-			if (nee)
-			{
-
 			}
 		}
 
