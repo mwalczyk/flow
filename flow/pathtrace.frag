@@ -50,6 +50,7 @@ const float _ignored = -1.0;
  * Material Definitions
  *
  ***************************************************************************************************/
+const int material_type_invalid = -1;
 const int material_type_diffuse = 0;
 const int material_type_metallic = 1;
 const int material_type_dielectric = 2;
@@ -58,7 +59,7 @@ struct material
 {
 	// The primary color of a Lambertian material: must be divided by π so that it 
 	// integrates to 1, as explained here: https://seblagarde.wordpress.com/tag/lambertian-surface/
-	vec3 reflectivity;
+	vec3 reflectance;
 
 	// An integer denoting the type of the material (diffuse, metallic, etc.).
 	int type;
@@ -266,7 +267,7 @@ float total_area(in area_light light)
 	return length(edge0) * length(edge1);
 }
 
-vec3 sample_light(in area_light light, float rand_a, float rand_b)
+vec3 generate_sample_on_light(in area_light light, float rand_a, float rand_b)
 {
 	vec3 edge0 = light.ur - light.ul;
 	vec3 edge1 = light.ll - light.ul;
@@ -513,6 +514,26 @@ vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 	return mix(rand_hemi, reflected, mtl.type);
 }
 
+vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout vec4 seed)
+{
+	float rand_u = gpu_rnd(seed);
+	float rand_v = gpu_rnd(seed);
+	vec3 sample_on_light_source = generate_sample_on_light(scene_light, rand_u, rand_v);
+	vec3 normal_at_light_source = -z_axis;
+
+	float area = total_area(scene_light);
+	float dist = distance(position, sample_on_light_source);
+
+	vec3 to_light_source = normalize(sample_on_light_source - position);
+
+	float falloff_at_light = max(0.0, dot(normal_at_light_source, -to_light_source));
+	float falloff_at_current_point = max(0.0, dot(normal, to_light_source));
+
+	float solid_angle = (falloff_at_light * area) / (dist * dist);
+
+	return scene_light.intensity * solid_angle * brdf * falloff_at_current_point;
+}
+
 vec3 trace()
 {
 	// We want to make sure that we correct for the window's aspect ratio
@@ -573,6 +594,9 @@ vec3 trace()
 				break;
 			}
 
+			// If we get here, that means we've hit an object.
+			// ...
+
 			// Calculate the origin and direction of the new, scattered ray.
 			material mtl = materials[inter.material_index];
 			r.origin = inter.position + inter.normal * epsilon;
@@ -580,14 +604,17 @@ vec3 trace()
 			
 			float cos_theta = max(0.0, dot(inter.normal, r.direction));
 
-			if (mtl.type == material_type_diffuse)
+			// Accumulate color.
+			if (mtl.type == material_type_diffuse)	
 			{
-				vec3 brdf = mtl.reflectivity / pi;
+				vec3 brdf = mtl.reflectance / pi;
 				accumulated *= 2.0 * pi * brdf * cos_theta;
+
+				//color += sample_light_source(inter.position, inter.normal, in vec3 brdf, inout vec4 seed)
 			}
 			else if (mtl.type == material_type_metallic)
 			{
-				accumulated *= mtl.reflectivity;
+				accumulated *= mtl.reflectance;
 			}
 
 
@@ -596,21 +623,7 @@ vec3 trace()
 
 			if (nee)
 			{
-				// float rand_u = gpu_rnd(seed);
-				// float rand_v = gpu_rnd(seed);
-				// vec3 sample_on_light_source = sample_light(scene_light, rand_u, rand_v);
-				// vec3 normal_at_light_source = -z_axis;
-				// float area = total_area(scene_light);
-				// float dist = distance(itr.position, sample_on_light_source);
 
-				// vec3 to_light_source = normalize(sample_on_light_source - itr.position);
-
-				// float falloff_at_light = max(0.0, dot(normal_at_light_source, -to_light_source));
-				// float falloff_at_current_point = max(0.0, dot(itr.normal, to_light_source));
-
-				// float solid_angle = (falloff_at_light * area) / (dist * dist);
-
-				// color += scene_light.intensity * solid_angle * brdf * falloff_at_current_point;
 			}
 		}
 
