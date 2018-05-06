@@ -98,6 +98,7 @@ public:
 		name{ name }, 
 		samples_per_pixel{ 0 },
 		total_frames_elapsed{ 0 },
+		cursor_position{ 0.5f, 0.5f },
 		swapchain_image_format{ vk::Format::eB8G8R8A8Unorm },
 		ping_pong_image_format{ vk::Format::eR32G32B32A32Sfloat }
 	{

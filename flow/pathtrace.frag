@@ -54,6 +54,7 @@ const int material_type_invalid = -1;
 const int material_type_diffuse = 0;
 const int material_type_metallic = 1;
 const int material_type_dielectric = 2;
+const int material_type_emissive = 3;
 
 struct material 
 {
@@ -67,12 +68,14 @@ struct material
 
 material materials[] = 
 {
-	{ { 1.00, 0.80, 0.80 }, material_type_diffuse },
-	{ { 0.90, 0.80, 0.10 }, material_type_metallic }, //material_type_metallic },
+	{ { 0.90, 0.80, 0.10 }, material_type_metallic }, 
 	{ { 0.90, 0.10, 0.20 }, material_type_diffuse },
-	{ { 0.75, 0.75, 0.60 }, material_type_diffuse },
+	{ { 0.968, 1.000, 0.968 }, material_type_diffuse }, // Off-white
 
-	{ white * 0.8, material_type_diffuse }
+	{ { 1.000, 0.419, 0.419 }, material_type_diffuse }, // Pink
+    { { 0.305, 0.803, 0.768 }, material_type_diffuse }, // Mint
+    { { 0.101, 0.325, 0.360 }, material_type_diffuse }, // Dark mint
+	{ { 1.000, 0.901, 0.427 }, material_type_diffuse },	// Yellow
 };
 
 /****************************************************************************************************
@@ -110,20 +113,19 @@ struct area_light
  ***************************************************************************************************/
 sphere spheres[] = 
 {
-	{ 100.0, vec3(0.0, 100.9, 0.0), 0 }, // Ground
-	{ 0.55, vec3(-1.4,  0.4, -1.3), 1 },
-	{ 0.20, vec3( 1.0,  0.7, -1.6), 2 },
-	{ 1.50, vec3( 0.0, -0.6,  0.0), 3 }
+	{ 0.55, vec3(-1.4,  0.4, -1.3), 0 },
+	{ 0.20, vec3( 1.0,  0.7, -1.6), 1 },
+	{ 1.50, vec3( 0.0, -0.6,  0.0), 2 }
 };
 
 plane planes[] = 
 {
-	{ -z_axis,  z_axis * 3.5, 4 }, // Back
-	{  z_axis, -z_axis * 4.5, 4 }, // Front
-	{ -x_axis,  x_axis * 4.5, 4 }, // Left
+	{ -z_axis,  z_axis * 3.5, 6 }, // Back
+	{  z_axis, -z_axis * 4.5, 2 }, // Front
+	{ -x_axis,  x_axis * 4.5, 3 }, // Left
 	{  x_axis, -x_axis * 4.5, 4 }, // Right
-
-	{  y_axis,  -y_axis * 4.5, 4 }, // Top
+	{  y_axis, -y_axis * 4.5, 2 }, // Top
+	{ -y_axis,  y_axis * 1.0, 2 }  // Bottom
 };
 
 area_light scene_light = 
@@ -184,12 +186,10 @@ mat3 lookat(in vec3 view_point, in vec3 target)
 	return mat3(camera_x, camera_y, camera_z);
 }
 
-// See: https://computergraphics.stackexchange.com/questions/2431/role-of-pdf-of-uniform-random-sampling-in-a-path-tracer?rq=1
-vec3 hemisphere(in vec3 normal, float rand_a, float rand_b) 
-{
-	// Explained here: https://www.scratchapixel.com/lessons/3d-basic-rendering/global-illumination-path-tracing/global-illumination-path-tracing-practical-implementation
-	const float offset = 100.0;
-
+vec3 cos_weighted_hemisphere(in vec3 normal, float rand_phi, float rand_radius) 
+{    
+	// Reference: `// Explained here: https://www.scratchapixel.com/lessons/3d-basic-rendering/global-illumination-path-tracing/global-illumination-path-tracing-practical-implementation`
+	//
 	// We can approximate the amount of light arriving at some point on the 
 	// surface of a diffuse object by using Monte Carlo integration. Essentially,
 	// we take the average of some number of unique samples of the function we 
@@ -219,13 +219,16 @@ vec3 hemisphere(in vec3 normal, float rand_a, float rand_b)
 	//		y = r * sin(phi) * sin(theta)
 	//		z = r * cos(theta)
 	//
-    float z = rand_a;
-    float sin_theta = sqrt(1.0 - z * z);
-    float phi = 2.0 * pi * rand_b;
-    float x = cos(phi) * sin_theta;
-    float y = sin(phi) * sin_theta;
 
- 	// In order to transform the sample from the world coordinate system
+	// Pick a random point on the unit disk and projeect it upwards onto 
+	// the hemisphere. This generates the cosine-weighted distribution
+	// that we are after.
+	float radius = sqrt(rand_radius);
+	float sample_x = radius * cos(2.0 * pi * rand_phi); 
+	float sample_y = radius * sin(2.0 * pi * rand_phi);
+	float sample_z = sqrt(1.0 - rand_radius);
+
+    // In order to transform the sample from the world coordinate system
  	// to the local coordinate system around the surface normal, we need 
  	// to construct a change-of-basis matrix. 
  	//
@@ -242,38 +245,26 @@ vec3 hemisphere(in vec3 normal, float rand_a, float rand_b)
  	//
  	// 1) x = N_z and z = -N_x
  	// 2) x = -N_z and z = N_x
- 	//
- 	// Here, we choose option (1). So, a vector in the tangent plane is:
- 	// <N_z, 0, -N_x>. By taking the cross product between `normal` and
- 	// this new vector, we can obtain a third vector that is orthogonal
- 	// to both.
- 	//
- 	// Together, these three vectors form a basis for the local coordinate
+    vec3 tangent = origin;
+    if (abs(normal.x) > abs(normal.y))
+    {
+    	tangent = normalize(vec3(normal.z, 0.0, -normal.x));
+    }
+    else
+    {
+    	tangent = normalize(vec3(0.0, -normal.z, normal.y));
+    }
+
+    // Together, these three vectors form a basis for the local coordinate
  	// system. Note that there are more robust ways of constructing these
  	// basis vectors, but this is the simplest.
-    vec3 tangent = normalize(vec3(normal.z, 0.0, -normal.x));
-
-    // Transform the sample from world to local coordinates.
     vec3 local_x = normalize(cross(normal, tangent));
     vec3 local_y = cross(normal, local_x);
     vec3 local_z = normal;
 
-    return normalize(local_x * x + local_y * y + local_z * z);
-}
-
-vec3 cos_weighted_hemisphere( in vec3 n, float rand_a, float rand_b) {
-  	vec2 r = vec2(rand_a, rand_b);
+	vec3 local_sample = vec3(sample_x * local_x + sample_y * local_y + sample_z * local_z);
     
-	vec3  uu = normalize( cross( n, vec3(0.0,1.0,1.0) ) );
-	vec3  vv = cross( uu, n );
-	
-	float ra = sqrt(r.y);
-	float rx = ra*cos(6.2831*r.x); 
-	float ry = ra*sin(6.2831*r.x);
-	float rz = sqrt( 1.0-r.y );
-	vec3  rr = vec3( rx*uu + ry*vv + rz*n );
-    
-    return normalize( rr );
+    return normalize(local_sample);
 }
 
 float total_area(in area_light light)
@@ -530,6 +521,7 @@ vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 	//vec3 r = mix(r1, r2, sin(push_constants.time) * 0.5 + 0.5);
 
 	vec3 rand_hemi = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));;
+	//vec3 rand_hemi = normalize(hemisphere(inter.normal, rand_a, rand_b));
 	vec3 reflected = reflect(inter.incident, inter.normal);
 
 	// Diffuse is 0, metallic is 1.
@@ -598,7 +590,7 @@ vec3 trace()
 		// uv-coordinates. All rays will originate from the camera's
 		// location. 
 		vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 4.0;
-		vec3 camera_position = vec3(0.0, -2.0, -4.0) + offset;
+		vec3 camera_position = vec3(0.0, -2.0, -5.0) + offset;
 		vec3 ro = camera_position;
 		vec3 rd = normalize(lookat(origin, ro) * vec3(uv, 1.0));
 		ray r = { ro, rd };
@@ -617,8 +609,9 @@ vec3 trace()
 			float seed_a = gpu_rnd(seed);
 			float seed_b = gpu_rnd(seed);
 
-			float x = (gl_FragCoord.x / push_constants.resolution.x);
-			bool next_event_estimation = bool( step(0.5, x) );
+			//float pct = (gl_FragCoord.x / push_constants.resolution.x);
+			//bool next_event_estimation = bool(step(0.5, pct));
+			bool next_event_estimation = true;
 
 			if (inter.object_type == object_type_miss)
 			{
