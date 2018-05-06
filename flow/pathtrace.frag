@@ -97,6 +97,12 @@ struct plane
 	int material_index;
 };
 
+struct box
+{
+	vec3 min_pt;
+	vec3 max_pt;
+};
+
 struct area_light 
 {
 	vec3 ul;
@@ -179,7 +185,7 @@ mat3 lookat(in vec3 view_point, in vec3 target)
 	//
 	// Together, these 3 vectors form the columns of our camera's look-at
 	// (or view) matrix.
-	vec3 camera_z = normalize(view_point - target);
+	vec3 camera_z = normalize(target - view_point);
 	vec3 camera_x = cross(camera_z, y_axis);
 	vec3 camera_y = cross(camera_x, camera_z);
 
@@ -381,6 +387,11 @@ bool intersect_plane(in plane pln, in ray r, out float t)
 	return false;
 }
 
+bool intersect_box(in box bx, in ray r, out float t)
+{
+	return false;
+}
+
 bool intersect_area_light(in area_light light, in ray r, out float t)
 {	
 	// See: https://stackoverflow.com/questions/21114796/3d-ray-quad-intersection-test-in-java
@@ -561,6 +572,14 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 	return black;
 }
 
+vec2 random_on_disk(inout vec4 seed)
+{
+	float radius = sqrt(gpu_rnd(seed));
+	float theta = 2.0 * pi * gpu_rnd(seed);
+	
+	return vec2(radius * cos(theta), radius * sin(theta));
+}
+
 vec3 trace()
 {
 	// We want to make sure that we correct for the window's aspect ratio
@@ -577,6 +596,22 @@ vec3 trace()
 	              uv.y - t * 67.0 };
 	
 	vec3 final = black;
+	
+	vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 4.0;
+	vec3 camera_position = vec3(0.0, -2.0, -5.0) + offset;
+	
+	// float vfov = 45.0;
+	// float aperture = 2.0;
+	// float lens_radius = aperture / 2.0;
+	// float theta = vfov * pi / 180.0;
+	// float half_height = tan(theta * 0.5);
+	// float half_width = 1.0 * half_height;
+	// mat3 look_at = lookat(camera_position, origin);
+
+	// vec2 st = (gl_FragCoord.xy / push_constants.resolution);
+	// vec3 lower_left_corner = origin - half_width * look_at[0] - half_height * look_at[1] - look_at[2] * 3.0;
+	// vec3 horizontal = 2.0 * half_width * look_at[0];
+	// vec3 vertical = 2.0 * half_height * look_at[1];
 
 	for (uint j = 0; j < number_of_iterations; ++j)
 	{
@@ -586,13 +621,16 @@ vec3 trace()
 		jitter = jitter * 2.0 - 1.0;
 		uv += (jitter / push_constants.resolution) * anti_aliasing;
 
+		//float dist_to_focus = length(camera_position);
+		//vec2 disk = random_on_disk(seed) * 0.12;
+		//vec3 ro = camera_position;
+		//vec3 rd = lower_left_corner + st.x * horizontal + st.y * vertical - camera_position;
+
 		// Calculate the ray direction based on the current fragment's
 		// uv-coordinates. All rays will originate from the camera's
-		// location. 
-		vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 4.0;
-		vec3 camera_position = vec3(0.0, -2.0, -5.0) + offset;
+		// location. 		
 		vec3 ro = camera_position;
-		vec3 rd = normalize(lookat(origin, ro) * vec3(uv, 1.0));
+		vec3 rd = normalize(lookat(ro, origin) * vec3(uv, 1.0));
 		ray r = { ro, rd };
 
 		// Define some colors.
