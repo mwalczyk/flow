@@ -72,10 +72,11 @@ material materials[] =
 	{ { 0.90, 0.10, 0.20 }, material_type_diffuse },
 	{ { 0.968, 1.000, 0.968 }, material_type_diffuse }, // Off-white
 
-	{ { 1.000, 0.419, 0.419 }, material_type_diffuse }, // Pink
-    { { 0.305, 0.803, 0.768 }, material_type_diffuse }, // Mint
-    { { 0.101, 0.325, 0.360 }, material_type_diffuse }, // Dark mint
-	{ { 1.000, 0.901, 0.427 }, material_type_diffuse },	// Yellow
+	{ vec3(1.0, 0.35, 0.37), material_type_diffuse }, // Pink
+    { vec3(0.54, 0.79, 0.15), material_type_diffuse }, // Mint
+    { vec3(0.1, 0.51, 0.77), material_type_diffuse }, // Dark mint
+	{ vec3(1.0, 0.79, 0.23), material_type_diffuse },	// Yellow
+	{ vec3(0.42, 0.3, 0.58), material_type_diffuse }, // Purple
 };
 
 /****************************************************************************************************
@@ -130,7 +131,7 @@ plane planes[] =
 	{  z_axis, -z_axis * 4.5, 2 }, // Front
 	{ -x_axis,  x_axis * 4.5, 3 }, // Left
 	{  x_axis, -x_axis * 4.5, 4 }, // Right
-	{  y_axis, -y_axis * 4.5, 2 }, // Top
+	{  y_axis, -y_axis * 4.5, 7 }, // Top
 	{ -y_axis,  y_axis * 1.0, 2 }  // Bottom
 };
 
@@ -172,11 +173,11 @@ vec3 palette(in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d)
     return a + b * cos(2.0 * pi * (c * t + d));
 }
 
-mat3 lookat(in vec3 view_point, in vec3 target)
+mat3 lookat(in vec3 from, in vec3 to)
 {
 	// This function constructs a look-at matrix that will orient a camera
-	// positioned at `view_point` so that it is looking at `target`. First, 
-	// we calculate the vector pointing from `view_point` to `target`. This
+	// positioned at `from` so that it is looking at `to`. First, 
+	// we calculate the vector pointing from `from` to `to`. This
 	// serves as the new z-axis in our camera's frame. Next, we take the 
 	// cross-product between this vector and the world's y-axis to create
 	// the x-axis in our camera's frame. Finally, we take the cross-product
@@ -185,7 +186,7 @@ mat3 lookat(in vec3 view_point, in vec3 target)
 	//
 	// Together, these 3 vectors form the columns of our camera's look-at
 	// (or view) matrix.
-	vec3 camera_z = normalize(target - view_point);
+	vec3 camera_z = normalize(from - to);
 	vec3 camera_x = cross(camera_z, y_axis);
 	vec3 camera_y = cross(camera_x, camera_z);
 
@@ -313,11 +314,12 @@ vec3 get_point_at(in ray r, float t)
 
 bool intersect_sphere(in sphere sph, in ray r, out float t)
 {
-	vec3 temp = r.origin - sph.center;
-	float b = 2.0 * dot(temp, r.direction);
-	float c = dot(temp, temp) - sph.radius * sph.radius;
+	vec3 oc = r.origin - sph.center;
+	float a = dot(r.direction, r.direction);
+	float b = dot(oc, r.direction);
+	float c = dot(oc, oc) - sph.radius * sph.radius;
 
-	float discriminant = b * b - 4.0 * c;
+	float discriminant = b * b - a * c;
 
 	// Avoid taking the square root of a negative number.
 	if (discriminant < 0.0)
@@ -326,17 +328,17 @@ bool intersect_sphere(in sphere sph, in ray r, out float t)
 	}
 
 	discriminant = sqrt(discriminant);
-	float t0 = -b + discriminant;
-	float t1 = -b - discriminant;
+	float t0 = (-b + discriminant) / a;
+	float t1 = (-b - discriminant) / a;
 
 	// We want to take the smallest positive root. 
 	if (t1 > epsilon)
 	{
-		t = t1 * 0.5;
+		t = t1;
 	} 
 	else if (t0 > epsilon)
 	{
-		t = t0 * 0.5;
+		t = t0;
 	} 
 	else 
 	{	
@@ -348,6 +350,8 @@ bool intersect_sphere(in sphere sph, in ray r, out float t)
 
 bool intersect_plane(in plane pln, in ray r, out float t)
 {
+	//r.direction = normalize(r.direction);
+
 	// We can write the equation for a plane, given its normal vector and
 	// a single point `p` that lies on the plane. We can test if a different
 	// point `v` is on the plane via the following formula:
@@ -394,6 +398,8 @@ bool intersect_box(in box bx, in ray r, out float t)
 
 bool intersect_area_light(in area_light light, in ray r, out float t)
 {	
+	//r.direction = normalize(r.direction);
+
 	// See: https://stackoverflow.com/questions/21114796/3d-ray-quad-intersection-test-in-java
 	vec3 edge0 = light.ur - light.ul;
 	vec3 edge1 = light.ll - light.ul;
@@ -574,6 +580,7 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 
 vec2 random_on_disk(inout vec4 seed)
 {
+	// http://mathworld.wolfram.com/DiskPointPicking.html
 	float radius = sqrt(gpu_rnd(seed));
 	float theta = 2.0 * pi * gpu_rnd(seed);
 	
@@ -586,8 +593,7 @@ vec3 trace()
 	// so that our final render doesn't look skewed or stretched when the
 	// resolution changes.
 	float aspect_ratio = push_constants.resolution.x / push_constants.resolution.y;
-	vec2 uv = (gl_FragCoord.xy / push_constants.resolution) * 2.0 - 1.0;
-	uv.x *= aspect_ratio;
+	vec2 uv = gl_FragCoord.xy / push_constants.resolution;
 
 	float t = push_constants.time;
 	vec4 seed = { uv.x + t * 41.13, 
@@ -597,21 +603,24 @@ vec3 trace()
 	
 	vec3 final = black;
 	
-	vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 4.0;
-	vec3 camera_position = vec3(0.0, -2.0, -5.0) + offset;
-	
-	// float vfov = 45.0;
-	// float aperture = 2.0;
-	// float lens_radius = aperture / 2.0;
-	// float theta = vfov * pi / 180.0;
-	// float half_height = tan(theta * 0.5);
-	// float half_width = 1.0 * half_height;
-	// mat3 look_at = lookat(camera_position, origin);
+	vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 8.0;
+	vec3 camera_position = vec3(0.0, -3.0, -8.5) + offset;
 
-	// vec2 st = (gl_FragCoord.xy / push_constants.resolution);
-	// vec3 lower_left_corner = origin - half_width * look_at[0] - half_height * look_at[1] - look_at[2] * 3.0;
-	// vec3 horizontal = 2.0 * half_width * look_at[0];
-	// vec3 vertical = 2.0 * half_height * look_at[1];
+	const float vfov = 45.0;
+	const float aperture = 0.5;
+	const float lens_radius = aperture / 2.0;
+	const float theta = vfov * pi / 180.0;
+	const float half_height = tan(theta * 0.5);
+	const float half_width = aspect_ratio * half_height;
+
+	mat3 look_at = lookat(camera_position, origin);
+
+	float dist_to_focus = push_constants.cursor_position.x * 5.0 + 5.0;
+	dist_to_focus = length(camera_position);
+
+	vec3 lower_left_corner = camera_position - look_at * vec3(half_width, half_height, 1.0) * dist_to_focus;
+	vec3 horizontal = 2.0 * half_width * dist_to_focus * look_at[0];
+	vec3 vertical = 2.0 * half_height * dist_to_focus * look_at[1];
 
 	for (uint j = 0; j < number_of_iterations; ++j)
 	{
@@ -620,17 +629,15 @@ vec3 trace()
 		vec2 jitter = { gpu_rnd(seed), gpu_rnd(seed) };
 		jitter = jitter * 2.0 - 1.0;
 		uv += (jitter / push_constants.resolution) * anti_aliasing;
-
-		//float dist_to_focus = length(camera_position);
-		//vec2 disk = random_on_disk(seed) * 0.12;
-		//vec3 ro = camera_position;
-		//vec3 rd = lower_left_corner + st.x * horizontal + st.y * vertical - camera_position;
+		
+		vec3 rd = lens_radius * vec3(random_on_disk(seed), 0.0);
+		vec3 lens_offset = look_at * vec3(rd.xy, 0.0);
+		vec3 ro = camera_position + lens_offset;
+		rd = lower_left_corner + uv.x * horizontal + uv.y * vertical - camera_position - lens_offset;
 
 		// Calculate the ray direction based on the current fragment's
 		// uv-coordinates. All rays will originate from the camera's
 		// location. 		
-		vec3 ro = camera_position;
-		vec3 rd = normalize(lookat(ro, origin) * vec3(uv, 1.0));
 		ray r = { ro, rd };
 
 		// Define some colors.
