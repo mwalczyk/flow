@@ -606,10 +606,10 @@ vec3 trace()
 	vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 8.0;
 	vec3 camera_position = vec3(0.0, -3.0, -8.5) + offset;
 
-	const float vfov = 45.0;
+	const float vertical_fov = 45.0;
 	const float aperture = 0.5;
 	const float lens_radius = aperture / 2.0;
-	const float theta = vfov * pi / 180.0;
+	const float theta = vertical_fov * pi / 180.0;
 	const float half_height = tan(theta * 0.5);
 	const float half_width = aspect_ratio * half_height;
 
@@ -656,7 +656,7 @@ vec3 trace()
 
 			//float pct = (gl_FragCoord.x / push_constants.resolution.x);
 			//bool next_event_estimation = bool(step(0.5, pct));
-			bool next_event_estimation = true;
+			bool next_event_estimation = false;
 
 			if (inter.object_type == object_type_miss)
 			{
