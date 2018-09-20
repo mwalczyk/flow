@@ -36,7 +36,7 @@ const float gamma = 1.0 / 2.2;
 */
 
 const float anti_aliasing = 0.55;
-const uint number_of_iterations = 6;
+const uint number_of_iterations = 1;
 const uint number_of_bounces = 4;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
