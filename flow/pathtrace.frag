@@ -20,13 +20,28 @@ layout(location = 0) out vec4 o_color;
  * Scalar Constants
  *
  ***************************************************************************************************/
+
+#define pi 3.1415926535897932384626433832795
+#define PI2 6.283185307179586476925286766559
+#define PI1 0.31830988618379067153776752674503
+#define PI180 0.01745329251994329576923690768489
+#define gamma 0.45454545454545454545454545454545
+
+/*
 const float pi = 3.1415926535897932384626433832795;
+const float PI2 = pi + pi;
+const float PI1 = 1.0 / pi;
+const float PI180 = pi / 180.0;
 const float gamma = 1.0 / 2.2;
+*/
+
 const float anti_aliasing = 0.55;
 const uint number_of_iterations = 6;
 const uint number_of_bounces = 4;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
+
+
 
 /****************************************************************************************************
  *
@@ -52,8 +67,8 @@ const float _ignored = -1.0;
  ***************************************************************************************************/
 const int material_type_invalid = -1;
 const int material_type_diffuse = 0;
-const int material_type_metallic = 1;
-const int material_type_dielectric = 2;
+const int material_type_metallic = 1;	// <= mirror
+const int material_type_dielectric = 2;	// <= glass
 const int material_type_emissive = 3;
 
 struct material 
@@ -86,7 +101,7 @@ material materials[] =
  ***************************************************************************************************/
 struct sphere
 {
-	float radius;
+	float radius, r2;
 	vec3 center;
 	int material_index;
 };
@@ -111,6 +126,10 @@ struct area_light
 	vec3 lr;
 	vec3 ll;
 	vec3 intensity;
+	vec3 normal;
+	float area;
+	float dot_edge0;
+	float dot_edge1;
 };
 
 /****************************************************************************************************
@@ -120,9 +139,9 @@ struct area_light
  ***************************************************************************************************/
 sphere spheres[] = 
 {
-	{ 0.55, vec3(-1.4,  0.4, -1.3), 0 },
-	{ 0.20, vec3( 1.0,  0.7, -1.6), 1 },
-	{ 1.50, vec3( 0.0, -0.6,  0.0), 2 }
+	{ 0.55, 0.55*0.55, vec3(-1.4,  0.4, -1.3), 0 },
+	{ 0.20, 0.20*0.20, vec3( 1.0,  0.7, -1.6), 1 },
+	{ 1.50, 1.50*1.50, vec3( 0.0, -0.6,  0.0), 2 }
 };
 
 plane planes[] = 
@@ -141,7 +160,11 @@ area_light scene_light =
 	{  3.0, -3.5,  0.0,  }, // ur
 	{  3.0, -3.5, -3.0,  }, // lr
 	{ -3.0, -3.5, -3.0,  }, // ll
-	white
+	white,
+	white, //normal
+	0.0,
+	0.0,
+	0.0
 };
 
 /****************************************************************************************************
@@ -151,26 +174,33 @@ area_light scene_light =
  ***************************************************************************************************/
 // PRNG based on a weighted sum of four instances of the multiplicative linear congruential 
 // generator from the following paper: https://arxiv.org/pdf/1505.06022.pdf
-float gpu_rnd(inout vec4 state) 
-{
+
+
 	const vec4 q = vec4(1225, 1585, 2457, 2098);
 	const vec4 r = vec4(1112, 367, 92, 265);
 	const vec4 a = vec4(3423, 2646, 1707, 1999);
 	const vec4 m = vec4(4194287, 4194277, 4194191, 4194167);
+	
+	const vec4 m1 = vec4(1.0) / m;
+	const vec4 q1 = vec4(1.0) / q;
 
-	vec4 beta = floor(state / q);
+
+float gpu_rnd(inout vec4 state) 
+{
+
+	vec4 beta = floor(state * q1);
 	vec4 p = a * mod(state, q) - beta * r;
 	beta = (sign(-p) + vec4(1.0)) * vec4(0.5) * m;
 	state = p + beta;
 
-	return fract(dot(state / m, vec4(1.0, -1.0, 1.0, -1.0)));
+	return fract(dot(state * m1, vec4(1.0, -1.0, 1.0, -1.0)));
 }
 
 vec3 palette(in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d)
 {
 	// A wonderful function from Inigo Quilez for generating color 
 	// palettes: http://iquilezles.org/www/articles/palettes/palettes.htm
-    return a + b * cos(2.0 * pi * (c * t + d));
+    return a + b * cos(PI2 * (c * t + d));
 }
 
 mat3 lookat(in vec3 from, in vec3 to)
@@ -231,8 +261,8 @@ vec3 cos_weighted_hemisphere(in vec3 normal, float rand_phi, float rand_radius)
 	// the hemisphere. This generates the cosine-weighted distribution
 	// that we are after.
 	float radius = sqrt(rand_radius);
-	float sample_x = radius * cos(2.0 * pi * rand_phi); 
-	float sample_y = radius * sin(2.0 * pi * rand_phi);
+	float sample_x = radius * cos(PI2 * rand_phi); 
+	float sample_y = radius * sin(PI2 * rand_phi);
 	float sample_z = sqrt(1.0 - rand_radius);
 
     // In order to transform the sample from the world coordinate system
@@ -252,26 +282,54 @@ vec3 cos_weighted_hemisphere(in vec3 normal, float rand_phi, float rand_radius)
  	//
  	// 1) x = N_z and z = -N_x
  	// 2) x = -N_z and z = N_x
+	
+	/*
     vec3 tangent = origin;
     if (abs(normal.x) > abs(normal.y))
     {
-    	tangent = normalize(vec3(normal.z, 0.0, -normal.x));
+    	tangent = 
+		//normalize
+		(vec3(normal.z, 0.0, -normal.x));
     }
     else
     {
-    	tangent = normalize(vec3(0.0, -normal.z, normal.y));
+    	tangent = 
+		//normalize
+		(vec3(0.0, -normal.z, normal.y));
     }
 
     // Together, these three vectors form a basis for the local coordinate
  	// system. Note that there are more robust ways of constructing these
  	// basis vectors, but this is the simplest.
-    vec3 local_x = normalize(cross(normal, tangent));
+    vec3 local_x = 
+	//normalize
+	(cross(normal, tangent));
     vec3 local_y = cross(normal, local_x);
     vec3 local_z = normal;
-
-	vec3 local_sample = vec3(sample_x * local_x + sample_y * local_y + sample_z * local_z);
-    
-    return normalize(local_sample);
+	*/
+	
+	vec3 u, w;
+	 
+	if (normal.z < 0.0)
+	{	
+		float a = 1.0 / (1.0 - normal.z); 
+		float b = normal.x * normal.y * a;
+		u = vec3(1.0 - normal.x * normal.x * a, -b, normal.x); 
+		w = vec3(b, normal.y * normal.y * a - 1.0, -normal.y);
+	}
+	else
+	{
+		float a = 1.0 / (1.0 + normal.z); 
+		float b = -normal.x * normal.y * a;
+		u = vec3(1.0 - normal.x * normal.x * a, b, -normal.x); 
+		w = vec3(b, 1.0 - normal.y * normal.y * a, -normal.y);
+	}
+	
+	vec3 local_sample = vec3(sample_x * u + sample_y * w + sample_z * normal);
+	
+    return 
+	//normalize
+	(local_sample);
 }
 
 float total_area(in area_light light)
@@ -312,12 +370,12 @@ vec3 get_point_at(in ray r, float t)
 	return r.origin + r.direction * t;
 }
 
-bool intersect_sphere(in sphere sph, in ray r, out float t)
+bool intersect_sphere(in sphere sph, in ray r, in float a, in float aa, out float t)
 {
 	vec3 oc = r.origin - sph.center;
-	float a = dot(r.direction, r.direction);
+	//float a = dot(r.direction, r.direction);
 	float b = dot(oc, r.direction);
-	float c = dot(oc, oc) - sph.radius * sph.radius;
+	float c = dot(oc, oc) - sph.r2;
 
 	float discriminant = b * b - a * c;
 
@@ -328,22 +386,67 @@ bool intersect_sphere(in sphere sph, in ray r, out float t)
 	}
 
 	discriminant = sqrt(discriminant);
-	float t0 = (-b + discriminant) / a;
-	float t1 = (-b - discriminant) / a;
+	//float t1 = (-b - discriminant) / a;
+	float t1 = (-b - discriminant) * aa;
 
 	// We want to take the smallest positive root. 
 	if (t1 > epsilon)
 	{
 		t = t1;
 	} 
-	else if (t0 > epsilon)
-	{
-		t = t0;
-	} 
 	else 
-	{	
+	{
+		//t1 = (-b + discriminant) / a;
+		t1 = (-b + discriminant) * aa;
+		if (t1 > epsilon)
+		{
+			t = t1;
+		}
+		else 
+		{	
+			return false;
+		}
+	}
+	
+	
+	/*
+	vec3 op = sph.center - r.origin;
+
+	float b = dot(op, r.direction);
+	
+	//float det = b * b - vdot(op, op) + s->rr;
+	float det = b * b - dot(op, op) + sph.r2;
+	if (det < 0.f)
+	{
+		t = 0.0;
 		return false;
 	}
+	else
+		det = sqrt(det);
+
+	t = b - det;
+	
+
+	// We want to take the smallest positive root. 
+	if (t > epsilon)
+	{
+		;
+	} 
+	else 
+	{
+		t = b + det;
+
+		if (t > epsilon)
+		{
+			;
+		}
+		else
+		{	
+			t = 0.0;
+			return false;
+		}
+	}
+	*/
 
 	return true;
 }
@@ -401,22 +504,45 @@ bool intersect_area_light(in area_light light, in ray r, out float t)
 	//r.direction = normalize(r.direction);
 
 	// See: https://stackoverflow.com/questions/21114796/3d-ray-quad-intersection-test-in-java
+	/*
 	vec3 edge0 = light.ur - light.ul;
 	vec3 edge1 = light.ll - light.ul;
-	vec3 normal = normalize(cross(edge0, edge1));
+	vec3 normal = 
+	//normalize
+	(cross(edge0, edge1));
 
-	plane pln = plane(normal, vec3(light.ur), 0);
+	plane pln = plane(normal, vec3(light.ur), 0);	
+	*/
+	
+	plane pln = plane(light.normal, vec3(light.ur), 0);
 
 	float temp_t;
-	if (intersect_plane(pln, r, temp_t))
+	if (intersect_plane(pln, r, temp_t)) //2dot, 1/
 	{
-		vec3 m = r.origin + r.direction * temp_t;
+		//6* 1/
+		vec3 m = r.origin + r.direction * temp_t; //3*
 
-		float u = dot(m - light.ul, edge0);
-		float v = dot(m - light.ul, edge1);
+		float u = dot(m - light.ul, light.ur - light.ul);
+		if (
+			u < epsilon ||
+			u > light.dot_edge0
+			)
+		{
+			//12* 1/
+			return false;
+		}
+		
+		float v = dot(m - light.ul, light.ll - light.ul);
+		//2dot
+		//= 4dot 3* 1/ => 15* 1/
+		//very good rect intersection code
 
+		/*
 		if (u >= epsilon && v >= epsilon &&
-			u <= dot(edge0, edge0) && v <= dot(edge1, edge1))
+			u <= light.dot_edge0 && v <= light.dot_edge1)
+			*/
+		if (v >= epsilon &&
+			v <= light.dot_edge1)
 		{
 			t = temp_t;
 			return true;	
@@ -475,13 +601,17 @@ intersection intersect_scene(in ray r)
 		max_distance
 	};
 
+	
+	float a = dot(r.direction, r.direction);
+	float aa = 1.0/a;
+	
 	// Now, let's iterate through the objects in our scene, starting with 
 	// the spheres:
 	for(int i = 0; i < spheres.length(); ++i)
 	{	
 		// Did the ray intersect this object?
 		float temp_t;
-		if (intersect_sphere(spheres[i], r, temp_t))
+		if (intersect_sphere(spheres[i], r, a, aa, temp_t))
 		{
 			// Was the intersection closer than any previous one?
 			if (temp_t < inter.t)
@@ -489,7 +619,9 @@ intersection intersect_scene(in ray r)
 				inter.material_index = spheres[i].material_index;
 				inter.object_type = object_type_sphere;
 				inter.position = r.origin + r.direction * temp_t;
-				inter.normal = normalize(inter.position - spheres[i].center);
+				inter.normal = 
+				normalize
+				(inter.position - spheres[i].center);
 				inter.t = temp_t;
 			}
 		} 
@@ -508,7 +640,9 @@ intersection intersect_scene(in ray r)
 				inter.material_index = planes[i].material_index;
 				inter.object_type = object_type_plane;
 				inter.position = r.origin + r.direction * temp_t;
-				inter.normal = normalize(planes[i].normal);
+				inter.normal = 
+				//normalize
+				(planes[i].normal);
 				inter.t = temp_t;
 			}
 		} 
@@ -537,7 +671,9 @@ vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 	//vec3 r2 = normalize(hemisphere(inter.normal, rand_a, rand_b));
 	//vec3 r = mix(r1, r2, sin(push_constants.time) * 0.5 + 0.5);
 
-	vec3 rand_hemi = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));;
+	vec3 rand_hemi = 
+	//normalize
+	(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));;
 	//vec3 rand_hemi = normalize(hemisphere(inter.normal, rand_a, rand_b));
 	vec3 reflected = reflect(inter.incident, inter.normal);
 
@@ -553,7 +689,9 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 	vec3 position_on_light_source = generate_sample_on_light(scene_light, rand_u, rand_v);
 	vec3 normal_of_light_source = y_axis;
 
-	vec3 to_light_source = normalize(position_on_light_source - position);
+	vec3 to_light_source = 
+	normalize
+	(position_on_light_source - position);
 
 	float falloff_at_light = dot(normal_of_light_source, -to_light_source);
 	float falloff_at_current_point = dot(normal, to_light_source);
@@ -566,9 +704,16 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 		// Check for occlusions.
 		if (inter.object_type == object_type_area_light)
 		{
-			float area = total_area(scene_light);
+			//float area = total_area(scene_light);
+			float area = scene_light.area;
+			
+			
 			float dist = distance(position, position_on_light_source);
 			float solid_angle = (falloff_at_light * area) / (dist * dist);
+			
+			
+			//float solid_angle = (falloff_at_light * area) / length(position_on_light_source - position);
+			//float solid_angle = (falloff_at_light * area) / length( position - position_on_light_source);
 
 			return scene_light.intensity * solid_angle * brdf * falloff_at_current_point;
 		}
@@ -582,7 +727,7 @@ vec2 random_on_disk(inout vec4 seed)
 {
 	// http://mathworld.wolfram.com/DiskPointPicking.html
 	float radius = sqrt(gpu_rnd(seed));
-	float theta = 2.0 * pi * gpu_rnd(seed);
+	float theta = PI2 * gpu_rnd(seed);
 	
 	return vec2(radius * cos(theta), radius * sin(theta));
 }
@@ -609,7 +754,7 @@ vec3 trace()
 	const float vertical_fov = 45.0;
 	const float aperture = 0.5;
 	const float lens_radius = aperture / 2.0;
-	const float theta = vertical_fov * pi / 180.0;
+	const float theta = vertical_fov * PI180;
 	const float half_height = tan(theta * 0.5);
 	const float half_width = aspect_ratio * half_height;
 
@@ -621,6 +766,19 @@ vec3 trace()
 	vec3 lower_left_corner = camera_position - look_at * vec3(half_width, half_height, 1.0) * dist_to_focus;
 	vec3 horizontal = 2.0 * half_width * dist_to_focus * look_at[0];
 	vec3 vertical = 2.0 * half_height * dist_to_focus * look_at[1];
+	
+	
+	scene_light.area = total_area(scene_light);
+	
+	vec3 edge0 = scene_light.ur - scene_light.ul;
+	vec3 edge1 = scene_light.ll - scene_light.ul;
+	scene_light.normal = 
+	normalize
+	(cross(edge0, edge1));
+	
+	scene_light.dot_edge0 = dot(edge0, edge0);
+	scene_light.dot_edge1 = dot(edge1, edge1);
+	
 
 	for (uint j = 0; j < number_of_iterations; ++j)
 	{
@@ -655,8 +813,9 @@ vec3 trace()
 			float seed_b = gpu_rnd(seed);
 
 			//float pct = (gl_FragCoord.x / push_constants.resolution.x);
-			//bool next_event_estimation = bool(step(0.5, pct));
-			bool next_event_estimation = false;
+			//bool next_event_estimation = !(bool(step(0.5, pct)));
+			//bool next_event_estimation = false;
+			bool next_event_estimation = true;
 
 			if (inter.object_type == object_type_miss)
 			{
@@ -690,12 +849,14 @@ vec3 trace()
 			// Accumulate color.
 			if (mtl.type == material_type_diffuse)	
 			{
-				vec3 brdf = mtl.reflectance / pi;
-				accumulated *= 2.0 * pi * brdf * cos_theta;
+				vec3 brdf = mtl.reflectance * PI1;
+				accumulated *= PI2 * brdf * cos_theta;
 
 				if (next_event_estimation)
 				{	
-					color += accumulated * sample_light_source(inter.position, inter.normal, brdf, seed);
+					color += 
+					accumulated * 
+					sample_light_source(inter.position, inter.normal, brdf, seed);
 				}	
 			}
 			else if (mtl.type == material_type_metallic)
