@@ -20,6 +20,9 @@ Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 - Vulkan SDK `1.1.70.1`
 - Visual Studio 2015.
 
+## To Run
+run tryflow.bat
+
 ## To Build
 1. Clone this repo.
 2. Inside the repo, create a new folder named `third_party`.
