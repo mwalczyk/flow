@@ -13,11 +13,34 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #include "vulkan/vulkan.hpp"
 
+//#define _DEBUG
+
 #ifdef _DEBUG
 #define LOG_DEBUG(x) std::cout << x << "\n"
 #else
 #define LOG_DEBUG(x) 
 #endif
+
+
+
+#include <time.h>
+
+clock_t startTime = clock(), timeNow;
+char strrr[1000];
+
+char *fn_prefix = "img";
+
+float prvTime = -1;
+float lastSaveTime = 0;
+float timeSecs;
+
+uint32_t ttl_passes;
+
+
+int maxTime=0, maxPasses=0;
+int saveEveryTime=0, saveEveryPasses=0;
+
+
 
 struct alignas(8) PushConstants
 {
@@ -38,6 +61,22 @@ float get_elapsed_time()
 
 	return static_cast<float>(ms) / 1000.0f;
 }
+
+
+
+void instantSave()
+{
+	snprintf(strrr, 1000,
+				"%s%ld-%.2fs.png",
+				fn_prefix,
+				ttl_passes,
+				timeSecs
+			);
+			
+	printf("SAVE %s... ", strrr);
+	printf("\n");
+}
+
 
 vk::UniqueShaderModule load_spv_into_module(const vk::UniqueDevice& device, const std::string& filename) 
 {
@@ -103,6 +142,7 @@ public:
 		ping_pong_image_format{ vk::Format::eR32G32B32A32Sfloat }
 	{
 		setup();
+		ttl_passes = 0;
 	}
 
 	~Application()
@@ -643,6 +683,10 @@ LOG_DEBUG("Created graphics pipelines");
 		if (mouse_down == 1.0f)
 		{
 			samples_per_pixel = 0;
+			ttl_passes = 0;
+			startTime = clock();
+			prvTime = -1;
+			lastSaveTime = 0;
 		}
 
 		PushConstants push_constants =
@@ -857,8 +901,67 @@ LOG_DEBUG("Created graphics pipelines");
 			auto present_info = vk::PresentInfoKHR{ 1, &sempahore_render_finished.get(), 1, &swapchain.get(), &index };
 			queue.presentKHR(present_info);
 
+
+			//tigra: samples count
 			samples_per_pixel++;
 			total_frames_elapsed++;
+			
+			ttl_passes++;
+			
+			
+			timeNow = clock();
+			
+			timeSecs = float(timeNow - startTime) / float(CLOCKS_PER_SEC);
+			
+			
+			if(saveEveryTime > 0)
+			{
+				if(timeSecs - lastSaveTime > float(saveEveryTime)+0.001f)
+				{
+					instantSave();
+					lastSaveTime = timeSecs;
+				}
+			}
+			
+			if(maxTime > 0)
+			{
+				if(timeSecs - maxTime > 0.001f)
+				{
+					instantSave();
+					exit(1);
+				}
+			}
+			
+			if(saveEveryPasses > 0)
+			{
+				if(ttl_passes > 0 && (ttl_passes % saveEveryPasses == 0) )
+				{
+					instantSave();
+					lastSaveTime = timeSecs;
+				}
+			}
+			
+			if(maxPasses > 0)
+			{
+				if(ttl_passes > 0 && ttl_passes==maxPasses)
+				{
+					instantSave();
+					exit(1);
+				}
+			}
+			
+			if(timeSecs - prvTime > 0.45f)
+			{
+				prvTime = timeSecs;
+				
+				snprintf(strrr, 1000, "VULKANized pepelac  %ld  %.1fs   %.2f pass/s",
+								samples_per_pixel,
+								timeSecs,
+								float(samples_per_pixel) / timeSecs
+						);
+						
+				glfwSetWindowTitle (window, strrr);
+			}
 		}
 	}
 
@@ -919,8 +1022,90 @@ private:
 	std::vector<vk::UniqueFramebuffer> ping_pong_framebuffers;
 };
 
-int main()
+
+
+void processCommandLine(int argc, char *argv[])
 {
+	int i, tmp;
+	
+	for(i=1;i<argc;i++)
+	{
+		if(strcmp(argv[i], "-t")==0)
+		{
+			if(i+1<argc)
+			{
+				tmp = atoi(argv[i+1]);
+				if(tmp>0)
+				{
+					maxTime = tmp;
+					printf(":maxTime: %ds\n", maxTime);
+				}
+				i++;
+			}
+		}
+		else
+		if(strcmp(argv[i], "-p")==0)
+		{
+			if(i+1<argc)
+			{
+				tmp = atoi(argv[i+1]);
+				if(tmp>0)
+				{
+					maxPasses = tmp;
+					printf(":maxPasses: %d\n", maxPasses);
+				}
+				i++;
+			}
+		}
+		else
+		if(strcmp(argv[i], "-et")==0)
+		{
+			if(i+1<argc)
+			{
+				tmp = atoi(argv[i+1]);
+				if(tmp>0)
+				{
+					saveEveryTime = tmp;
+					printf(":saveEveryTime: %ds\n", saveEveryTime);
+				}
+				i++;
+			}
+		}
+		else
+		if(strcmp(argv[i], "-ep")==0)
+		{
+			if(i+1<argc)
+			{
+				tmp = atoi(argv[i+1]);
+				if(tmp>0)
+				{
+					saveEveryPasses = tmp;
+					printf(":saveEveryPasses: %d\n", saveEveryPasses);
+				}
+				i++;
+			}
+		}
+		else
+		if(strcmp(argv[i], "--prefix")==0)
+		{
+			if(i+1<argc)
+			{
+				fn_prefix = argv[i+1];
+				
+					printf(":--prefix: %s\n", fn_prefix);
+					
+				i++;
+			}
+		}
+	}
+}
+
+
+
+int main(int argc, char *argv[])
+{	
+	processCommandLine(argc, argv);
+	
 	Application app{ 800, 800, "flow" };
 	app.draw();
 

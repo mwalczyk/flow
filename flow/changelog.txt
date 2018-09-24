@@ -1,0 +1,18 @@
+20 sep 18
+* normalize выбросил
+* константы расчитаны
+* onb revisited
+* немного ускорил sphere intersect
+* next_event_estimate включил и сохранил прекалькуляции для area light
+
+21 sep 18
+* passes, time, passes/s в заголовке окна
+
+23 sep 18
+* sphere intersect speedup
+* plane intersect speedup
+
+24 sep 18
+* -t, -p, -et, -ep
+* --prefix
+* more and more speed (vs 20 sep ver  415 vs 387 pass/s  6.7%)

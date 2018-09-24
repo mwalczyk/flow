@@ -370,8 +370,51 @@ vec3 get_point_at(in ray r, float t)
 	return r.origin + r.direction * t;
 }
 
-bool intersect_sphere(in sphere sph, in ray r, in float a, in float aa, out float t)
+/*
+double intersect(const Ray &r) const { // returns distance, 0 if nohit
+Vec op = p-r.o; // Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0
+double t, eps=1e-4, b=op.dot(r.d), det=b*b-op.dot(op)+rad2;
+if (det<0) return 0; else det=sqrt(det);
+return (t=b-det)>eps ? t : ((t=b+det)>eps ? t : 0);
+}
+*/
+
+bool intersect_sphere(in sphere sph, in ray r
+//, in float a, in float aa
+, out float t)
 {
+	vec3 op = sph.center - r.origin;
+	float b = dot(op, r.direction);
+	//float c = dot(temp, temp) - sph.r2;
+	
+	float discriminant = b * b - dot(op, op) + sph.r2;  //4*dot*dot - 4*c = 2*2*(dot*dot - c)
+	//7* vs 9*, consts
+	
+	if (discriminant < 0.0)
+	{
+		return false;
+	}
+	
+	discriminant = sqrt(discriminant);
+	
+	float t0 = b + discriminant;
+	float t1 = b - discriminant;
+	
+	if (t1 > epsilon)
+	{
+		t = t1;
+	} 
+	else if (t0 > epsilon)
+	{
+		t = t0;
+	} 
+		else 
+		{	
+			return false;
+		}
+		
+	
+	/*
 	vec3 oc = r.origin - sph.center;
 	//float a = dot(r.direction, r.direction);
 	float b = dot(oc, r.direction);
@@ -407,45 +450,6 @@ bool intersect_sphere(in sphere sph, in ray r, in float a, in float aa, out floa
 			return false;
 		}
 	}
-	
-	
-	/*
-	vec3 op = sph.center - r.origin;
-
-	float b = dot(op, r.direction);
-	
-	//float det = b * b - vdot(op, op) + s->rr;
-	float det = b * b - dot(op, op) + sph.r2;
-	if (det < 0.f)
-	{
-		t = 0.0;
-		return false;
-	}
-	else
-		det = sqrt(det);
-
-	t = b - det;
-	
-
-	// We want to take the smallest positive root. 
-	if (t > epsilon)
-	{
-		;
-	} 
-	else 
-	{
-		t = b + det;
-
-		if (t > epsilon)
-		{
-			;
-		}
-		else
-		{	
-			t = 0.0;
-			return false;
-		}
-	}
 	*/
 
 	return true;
@@ -475,13 +479,17 @@ bool intersect_plane(in plane pln, in ray r, out float t)
 	// will be zero. If the ray intersects the plane from behind, then `t`
 	// will be negative. We want to avoid both of these cases.
 	float denominator = dot(r.direction, pln.normal);
-	float numerator = dot(pln.center - r.origin, pln.normal);
 
+	// vd > -EPS && vd   < EPS
 	// The ray is (basically) parallel to the plane.
-	if (denominator > epsilon)
+	if (
+	denominator > epsilon
+	)
 	{
 		return false;
 	}
+	
+	float numerator = dot(pln.center - r.origin, pln.normal);
 
 	t = numerator / denominator;
 
@@ -602,8 +610,8 @@ intersection intersect_scene(in ray r)
 	};
 
 	
-	float a = dot(r.direction, r.direction);
-	float aa = 1.0/a;
+	//float a = dot(r.direction, r.direction);
+	//float aa = 1.0/a;
 	
 	// Now, let's iterate through the objects in our scene, starting with 
 	// the spheres:
@@ -611,7 +619,9 @@ intersection intersect_scene(in ray r)
 	{	
 		// Did the ray intersect this object?
 		float temp_t;
-		if (intersect_sphere(spheres[i], r, a, aa, temp_t))
+		if (intersect_sphere(spheres[i], r, 
+		// a, aa, 
+		temp_t))
 		{
 			// Was the intersection closer than any previous one?
 			if (temp_t < inter.t)
@@ -665,6 +675,26 @@ intersection intersect_scene(in ray r)
 	return inter;
 }
 
+/*
+vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
+{
+	//vec3 r1 = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));
+	//vec3 r2 = normalize(hemisphere(inter.normal, rand_a, rand_b));
+	//vec3 r = mix(r1, r2, sin(push_constants.time) * 0.5 + 0.5);
+	
+	if(mtl.type == material_type_metallic)
+		return reflect(inter.incident, inter.normal);
+	else return 
+	//normalize
+	(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));;
+	//vec3 rand_hemi = normalize(hemisphere(inter.normal, rand_a, rand_b));
+
+	// Diffuse is 0, metallic is 1.
+	//return mix(rand_hemi, reflected, mtl.type);
+}
+*/
+
+/*
 vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 {
 	//vec3 r1 = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));
@@ -680,6 +710,9 @@ vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 	// Diffuse is 0, metallic is 1.
 	return mix(rand_hemi, reflected, mtl.type);
 }
+*/
+
+
 
 vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout vec4 seed)
 {
@@ -690,7 +723,7 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 	vec3 normal_of_light_source = y_axis;
 
 	vec3 to_light_source = 
-	normalize
+	//normalize
 	(position_on_light_source - position);
 
 	float falloff_at_light = dot(normal_of_light_source, -to_light_source);
@@ -698,7 +731,10 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 
 	if (falloff_at_light > 0.0 && falloff_at_current_point > 0.0)
 	{
-		ray r = { position, to_light_source };
+		
+		float dist = distance(position, position_on_light_source);
+		
+		ray r = { position, to_light_source/dist };
 		intersection inter = intersect_scene(r);
 
 		// Check for occlusions.
@@ -708,8 +744,7 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 			float area = scene_light.area;
 			
 			
-			float dist = distance(position, position_on_light_source);
-			float solid_angle = (falloff_at_light * area) / (dist * dist);
+			float solid_angle = (falloff_at_light * area) / (dist * dist * dist * dist);
 			
 			
 			//float solid_angle = (falloff_at_light * area) / length(position_on_light_source - position);
@@ -722,6 +757,8 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 
 	return black;
 }
+
+
 
 vec2 random_on_disk(inout vec4 seed)
 {
@@ -739,7 +776,12 @@ vec3 trace()
 	// resolution changes.
 	float aspect_ratio = push_constants.resolution.x / push_constants.resolution.y;
 	vec2 uv = gl_FragCoord.xy / push_constants.resolution;
-
+	
+	/*
+	vec2 uv = (gl_FragCoord.xy / push_constants.resolution) * 2.0 - 1.0;
+	uv.x *= aspect_ratio;
+	*/
+	
 	float t = push_constants.time;
 	vec4 seed = { uv.x + t * 41.13, 
 	              uv.y + t * 113.0, 
@@ -750,7 +792,8 @@ vec3 trace()
 	
 	vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 8.0;
 	vec3 camera_position = vec3(0.0, -3.0, -8.5) + offset;
-
+	
+	
 	const float vertical_fov = 45.0;
 	const float aperture = 0.5;
 	const float lens_radius = aperture / 2.0;
@@ -792,6 +835,14 @@ vec3 trace()
 		vec3 lens_offset = look_at * vec3(rd.xy, 0.0);
 		vec3 ro = camera_position + lens_offset;
 		rd = lower_left_corner + uv.x * horizontal + uv.y * vertical - camera_position - lens_offset;
+		
+		rd = normalize(rd);
+		
+		
+		/*
+		vec3 ro = camera_position;
+		vec3 rd = normalize(lookat(ro, origin) * vec3(uv, 1.0));
+		*/
 
 		// Calculate the ray direction based on the current fragment's
 		// uv-coordinates. All rays will originate from the camera's
@@ -807,10 +858,6 @@ vec3 trace()
 		for (uint i = 0; i < number_of_bounces; ++i)
 		{	
 			intersection inter = intersect_scene(r);
-
-			// Generate a pair of per-bounce random seeds.
-			float seed_a = gpu_rnd(seed);
-			float seed_b = gpu_rnd(seed);
 
 			//float pct = (gl_FragCoord.x / push_constants.resolution.x);
 			//bool next_event_estimation = !(bool(step(0.5, pct)));
@@ -842,26 +889,47 @@ vec3 trace()
 			// Calculate the origin and direction of the new, scattered ray.
 			material mtl = materials[inter.material_index];
 			r.origin = inter.position + inter.normal * epsilon;
-			r.direction = scatter(mtl, inter, seed_a, seed_b);
 			
-			float cos_theta = max(0.0, dot(inter.normal, r.direction));
+			
+			
+			//r.direction = scatter(mtl, inter, seed_a, seed_b);
+			
 
 			// Accumulate color.
-			if (mtl.type == material_type_diffuse)	
+			if (mtl.type == material_type_diffuse
+			// && cos_theta > 0.0
+			)	
 			{
-				vec3 brdf = mtl.reflectance * PI1;
-				accumulated *= PI2 * brdf * cos_theta;
+				
+				// Generate a pair of per-bounce random seeds.
+				float seed_a = gpu_rnd(seed);
+				float seed_b = gpu_rnd(seed);
+				
+				r.direction = (cos_weighted_hemisphere(inter.normal, seed_a, seed_b));
+				
+				float cos_theta = 
+				max(0.0, 
+				dot(inter.normal, r.direction)
+				)
+				;
+			
+				//if(cos_theta > 0.0)
+				{
+					vec3 brdf = mtl.reflectance * PI1;
+					accumulated *= PI2 * brdf * cos_theta;
 
-				if (next_event_estimation)
-				{	
-					color += 
-					accumulated * 
-					sample_light_source(inter.position, inter.normal, brdf, seed);
-				}	
+					if (next_event_estimation)
+					{	
+						color += 
+						accumulated * 
+						sample_light_source(inter.position, inter.normal, brdf, seed);
+					}
+				}
 			}
 			else if (mtl.type == material_type_metallic)
 			{
 				accumulated *= mtl.reflectance;
+				r.direction =  reflect(inter.incident, inter.normal);
 			}
 		}
 
