@@ -29,6 +29,7 @@ clock_t startTime = clock(), timeNow;
 char strrr[1000];
 
 char *fn_prefix = "img";
+std::string kernel_fn = "pathtrace.spv";
 
 float prvTime = -1;
 float lastSaveTime = 0;
@@ -490,7 +491,7 @@ public:
 		// First, load all of the shader modules
 		const std::string path_prefix = "";
 		auto vs_module_quad = load_spv_into_module(device, path_prefix + "quad.spv");
-		auto fs_module_pathtrace = load_spv_into_module(device, path_prefix + "pathtrace.spv");
+		auto fs_module_pathtrace = load_spv_into_module(device, path_prefix + kernel_fn );
 		auto fs_module_composite = load_spv_into_module(device, path_prefix + "composite.spv");
 		LOG_DEBUG("Successfully loaded shader modules");
 
@@ -1093,6 +1094,18 @@ void processCommandLine(int argc, char *argv[])
 				fn_prefix = argv[i+1];
 				
 					printf(":--prefix: %s\n", fn_prefix);
+					
+				i++;
+			}
+		}
+		else
+		if(strcmp(argv[i], "--kernel")==0)
+		{
+			if(i+1<argc)
+			{
+				kernel_fn = std::string(argv[i+1]);
+				
+					printf(":--kernel: %s\n", kernel_fn.c_str());
 					
 				i++;
 			}

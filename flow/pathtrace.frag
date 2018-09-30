@@ -181,16 +181,16 @@ area_light scene_light =
 	const vec4 a = vec4(3423, 2646, 1707, 1999);
 	const vec4 m = vec4(4194287, 4194277, 4194191, 4194167);
 	
+	const vec4 m05 = vec4(0.5) * m;
 	const vec4 m1 = vec4(1.0) / m;
 	const vec4 q1 = vec4(1.0) / q;
 
 
 float gpu_rnd(inout vec4 state) 
 {
-
 	vec4 beta = floor(state * q1);
 	vec4 p = a * mod(state, q) - beta * r;
-	beta = (sign(-p) + vec4(1.0)) * vec4(0.5) * m;
+	beta = (sign(-p) + vec4(1.0)) * m05;
 	state = p + beta;
 
 	return fract(dot(state * m1, vec4(1.0, -1.0, 1.0, -1.0)));
@@ -734,15 +734,14 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 		
 		float dist = distance(position, position_on_light_source);
 		
-		ray r = { position, to_light_source/dist };
+		ray r = { position, to_light_source / dist };
 		intersection inter = intersect_scene(r);
 
 		// Check for occlusions.
 		if (inter.object_type == object_type_area_light)
 		{
 			//float area = total_area(scene_light);
-			float area = scene_light.area;
-			
+			float area = scene_light.area;			
 			
 			float solid_angle = (falloff_at_light * area) / (dist * dist * dist * dist);
 			
