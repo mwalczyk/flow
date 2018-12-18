@@ -15,10 +15,10 @@ As such, there are two separate graphics pipelines - one that runs the main path
 Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
 ## Tested On
-- Windows 8.1, Windows 10
-- NVIDIA GeForce GTX 970M, NVIDIA GeForce GTX 980
-- Vulkan SDK `1.1.70.1`
-- Visual Studio 2015.
+- Windows 10 Pro
+- NVIDIA GeForce GTX 1070
+- Vulkan SDK `1.1.92.1`
+- Visual Studio 2017
 
 ## To Build
 1. Clone this repo.
@@ -30,22 +30,13 @@ Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 6. Open the Visual Studio 2015 solution file.
 7. Build the included project.
 
-NOTE: There appears to be a bug in `vulkan.hpp`, which requires one to change line `35431` from:
-```cpp
-ObjectDestroy<NoParent> deleter( *this, allocator );
-```
-to:
-```cpp
-ObjectDestroy<NoParent> deleter( allocator );
-```
-
 ## To Do
 - [ ] Tone mapping and exposure adjustment
-- [ ] Explicit light sampling 
-- [ ] Russian roulette path termination
-- [ ] Reflective materials (dielectrics)
+- [x] Explicit light sampling 
+- [x] Russian roulette path termination
+- [ ] Refractive materials (dielectrics)
 - [ ] Improved BRDFs (GGX, Cook-Torrance, etc.)
-- [ ] Spatial acceleration data structures (most likely some form of GPU KD-tree)
+- [ ] Spatial acceleration data structures (most likely some form of GPU BVH)
 - [ ] Scene format (`.json`) and parser
 - [ ] Screenshot utility
 

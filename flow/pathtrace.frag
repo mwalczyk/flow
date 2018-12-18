@@ -20,13 +20,14 @@ layout(location = 0) out vec4 o_color;
  * Scalar Constants
  *
  ***************************************************************************************************/
-const float pi = 3.1415926535897932384626433832795;
-const float gamma = 1.0 / 2.2;
-const float anti_aliasing = 0.55;
+const float pi = 3.1415926535897932384626433832795f;
+const float two_pi = pi * 2.0f;
+const float gamma = 1.0f / 2.2f;
+const float anti_aliasing = 0.5f;
 const uint number_of_iterations = 6;
 const uint number_of_bounces = 4;
-const float epsilon = 0.001;
-const float max_distance = 10000.0;
+const float epsilon = 0.001f;
+const float max_distance = 1000.0f;
 
 /****************************************************************************************************
  *
@@ -54,7 +55,6 @@ const int material_type_invalid = -1;
 const int material_type_diffuse = 0;
 const int material_type_metallic = 1;
 const int material_type_dielectric = 2;
-const int material_type_emissive = 3;
 
 struct material 
 {
@@ -64,19 +64,26 @@ struct material
 
 	// An integer denoting the type of the material (diffuse, metallic, etc.).
 	int type;
+
+	// `true` if this object is a light source and `false` otherwise.
+	bool is_light;
 };
+
+const int light_index = 1;
 
 material materials[] = 
 {
-	{ { 0.90, 0.80, 0.10 }, material_type_metallic }, 
-	{ { 0.90, 0.10, 0.20 }, material_type_diffuse },
-	{ { 0.968, 1.000, 0.968 }, material_type_diffuse }, // Off-white
+	{ { 0.90, 0.80, 0.10 }, material_type_metallic, false }, 
+	{ { 0.90, 0.10, 0.20 }, material_type_diffuse, false },
+	{ { 0.968, 1.000, 0.968 }, material_type_diffuse, false }, 	// Off-white
 
-	{ vec3(1.0, 0.35, 0.37), material_type_diffuse }, // Pink
-    { vec3(0.54, 0.79, 0.15), material_type_diffuse }, // Mint
-    { vec3(0.1, 0.51, 0.77), material_type_diffuse }, // Dark mint
-	{ vec3(1.0, 0.79, 0.23), material_type_diffuse },	// Yellow
-	{ vec3(0.42, 0.3, 0.58), material_type_diffuse }, // Purple
+	{ vec3(1.0, 0.35, 0.37), material_type_diffuse, false }, 	// Pink
+    { vec3(0.54, 0.79, 0.15), material_type_diffuse, false }, 	// Mint
+    { vec3(0.1, 0.51, 0.77), material_type_diffuse, false }, 	// Dark mint
+	{ vec3(1.0, 0.79, 0.23), material_type_diffuse, false },	// Yellow
+	{ vec3(0.42, 0.3, 0.58), material_type_diffuse, false }, 	// Purple
+
+	{ vec3(8.0f, 8.0f, 8.0f), material_type_diffuse, true },  	// Light
 };
 
 /****************************************************************************************************
@@ -102,15 +109,16 @@ struct box
 {
 	vec3 min_pt;
 	vec3 max_pt;
+	int material_index;
 };
 
-struct area_light 
+struct quad 
 {
 	vec3 ul;
 	vec3 ur;
 	vec3 lr;
 	vec3 ll;
-	vec3 intensity;
+	int material_index;
 };
 
 /****************************************************************************************************
@@ -120,9 +128,10 @@ struct area_light
  ***************************************************************************************************/
 sphere spheres[] = 
 {
-	{ 0.55, vec3(-1.4,  0.4, -1.3), 0 },
-	{ 0.20, vec3( 1.0,  0.7, -1.6), 1 },
-	{ 1.50, vec3( 0.0, -0.6,  0.0), 2 }
+	{ 0.55, vec3( -1.4,  0.4, -1.3), 0 },
+	{ 0.20, vec3(  1.0,  0.7, -1.6), 1 },
+	{ 1.50, vec3(  0.0, -0.6,  0.0), 2 },
+	{ 0.30, vec3( -1.4, -1.6, -1.5), 8 }
 };
 
 plane planes[] = 
@@ -135,24 +144,21 @@ plane planes[] =
 	{ -y_axis,  y_axis * 1.0, 2 }  // Bottom
 };
 
-area_light scene_light = 
-{
-	{ -3.0, -3.5,  0.0,  }, // ul
-	{  3.0, -3.5,  0.0,  }, // ur
-	{  3.0, -3.5, -3.0,  }, // lr
-	{ -3.0, -3.5, -3.0,  }, // ll
-	white
-};
+const int object_type_miss = -1;
+const int object_type_sphere = 0;
+const int object_type_plane = 1;
+const int object_type_box = 2;
+const int object_type_quad = 3; 
 
 /****************************************************************************************************
  *
  * Utilities
  *
  ***************************************************************************************************/
-// PRNG based on a weighted sum of four instances of the multiplicative linear congruential 
-// generator from the following paper: https://arxiv.org/pdf/1505.06022.pdf
 float gpu_rnd(inout vec4 state) 
 {
+	// PRNG based on a weighted sum of four instances of the multiplicative linear congruential 
+	// generator from the following paper: https://arxiv.org/pdf/1505.06022.pdf
 	const vec4 q = vec4(1225, 1585, 2457, 2098);
 	const vec4 r = vec4(1112, 367, 92, 265);
 	const vec4 a = vec4(3423, 2646, 1707, 1999);
@@ -195,7 +201,7 @@ mat3 lookat(in vec3 from, in vec3 to)
 
 vec3 cos_weighted_hemisphere(in vec3 normal, float rand_phi, float rand_radius) 
 {    
-	// Reference: `// Explained here: https://www.scratchapixel.com/lessons/3d-basic-rendering/global-illumination-path-tracing/global-illumination-path-tracing-practical-implementation`
+	// Reference: `https://www.scratchapixel.com/lessons/3d-basic-rendering/global-illumination-path-tracing/global-illumination-path-tracing-practical-implementation`
 	//
 	// We can approximate the amount of light arriving at some point on the 
 	// surface of a diffuse object by using Monte Carlo integration. Essentially,
@@ -274,23 +280,22 @@ vec3 cos_weighted_hemisphere(in vec3 normal, float rand_phi, float rand_radius)
     return normalize(local_sample);
 }
 
-float total_area(in area_light light)
+float schlick(float cosine, float ior)
 {
-	vec3 edge0 = light.ur - light.ul;
-	vec3 edge1 = light.ll - light.ul;
+	float r0 = (1.0f - ior) / (1.0f + ior);
+	r0 = r0 * r0;
 
-	return length(edge0) * length(edge1);
+	return r0 + (1.0f - r0) * pow(1.0f - cosine, 5.0f);
 }
 
-vec3 generate_sample_on_light(in area_light light, float rand_a, float rand_b)
+float max3(in vec3 e) 
 {
-	vec3 edge0 = light.ur - light.ul;
-	vec3 edge1 = light.ll - light.ul;
+  return max(max(e.x, e.y), e.z);
+}
 
-	vec3 pt = edge0 * rand_a + edge1 * rand_b;
-	pt.y = -3.5;
-	
-	return pt;
+float min3(in vec3 e) 
+{
+  return min(min(e.x, e.y), e.z);
 }
 
 /****************************************************************************************************
@@ -350,8 +355,6 @@ bool intersect_sphere(in sphere sph, in ray r, out float t)
 
 bool intersect_plane(in plane pln, in ray r, out float t)
 {
-	//r.direction = normalize(r.direction);
-
 	// We can write the equation for a plane, given its normal vector and
 	// a single point `p` that lies on the plane. We can test if a different
 	// point `v` is on the plane via the following formula:
@@ -393,30 +396,31 @@ bool intersect_plane(in plane pln, in ray r, out float t)
 
 bool intersect_box(in box bx, in ray r, out float t)
 {
+	// TODO
 	return false;
 }
 
-bool intersect_area_light(in area_light light, in ray r, out float t)
+bool intersect_quad(in quad q, in ray r, out float t)
 {	
-	//r.direction = normalize(r.direction);
+	// See: `https://stackoverflow.com/questions/21114796/3d-ray-quad-intersection-test-in-java`
+	const vec3 edge0 = q.ur - q.ul;
+	const vec3 edge1 = q.ll - q.ul;
+	const vec3 normal = normalize(cross(edge0, edge1));
 
-	// See: https://stackoverflow.com/questions/21114796/3d-ray-quad-intersection-test-in-java
-	vec3 edge0 = light.ur - light.ul;
-	vec3 edge1 = light.ll - light.ul;
-	vec3 normal = normalize(cross(edge0, edge1));
-
-	plane pln = plane(normal, vec3(light.ur), 0);
+	plane pln = plane(normal, vec3(q.ur), 0);
 
 	float temp_t;
 	if (intersect_plane(pln, r, temp_t))
 	{
 		vec3 m = r.origin + r.direction * temp_t;
 
-		float u = dot(m - light.ul, edge0);
-		float v = dot(m - light.ul, edge1);
+		const float u = dot(m - q.ul, edge0);
+		const float v = dot(m - q.ul, edge1);
 
-		if (u >= epsilon && v >= epsilon &&
-			u <= dot(edge0, edge0) && v <= dot(edge1, edge1))
+		if (u >= epsilon && 
+			v >= epsilon &&
+			u <= dot(edge0, edge0) && 
+			v <= dot(edge1, edge1))
 		{
 			t = temp_t;
 			return true;	
@@ -432,16 +436,10 @@ bool intersect_area_light(in area_light light, in ray r, out float t)
  *
  ***************************************************************************************************/
 
-// In the `intersection` struct below, the `object_type` field will be one of the following: 
-const int object_type_miss = -1;
-const int object_type_sphere = 0;
-const int object_type_plane = 1; 
-const int object_type_area_light = 2;
-
 // An intersection holds several values:
 // - The material index of the object that was hit (`material_index`)
 // - The type of object that was hit (or a miss)
-// - The direction vector of the incident ray
+// - The direction vector of the `incident` ray
 // - The location of intersection in world space (`position`)
 // - The `normal` vector of the object that was hit, calculated at `position`
 // - A scalar value `t`, which denotes a point along the incident ray
@@ -449,6 +447,7 @@ struct intersection
 {
 	int material_index;
 	int object_type;
+	int object_index;
 	vec3 incident;
 	vec3 position;
 	vec3 normal;
@@ -469,15 +468,16 @@ intersection intersect_scene(in ray r)
 	{
 		-1,
 		object_type_miss,
+		-1,
 		r.direction,
 		r.origin,
-		{ -1.0, -1.0, -1.0 },
+		{ -1.0f, -1.0f, -1.0f },
 		max_distance
 	};
 
 	// Now, let's iterate through the objects in our scene, starting with 
 	// the spheres:
-	for(int i = 0; i < spheres.length(); ++i)
+	for(uint i = 0u; i < spheres.length(); ++i)
 	{	
 		// Did the ray intersect this object?
 		float temp_t;
@@ -488,6 +488,7 @@ intersection intersect_scene(in ray r)
 			{
 				inter.material_index = spheres[i].material_index;
 				inter.object_type = object_type_sphere;
+				inter.object_index = int(i);
 				inter.position = r.origin + r.direction * temp_t;
 				inter.normal = normalize(inter.position - spheres[i].center);
 				inter.t = temp_t;
@@ -496,7 +497,7 @@ intersection intersect_scene(in ray r)
 	}
 
 	// then planes:
-	for(int i = 0; i < planes.length(); ++i)
+	for(uint i = 0u; i < planes.length(); ++i)
 	{	
 		// Did the ray intersect this object?
 		float temp_t;
@@ -507,6 +508,7 @@ intersection intersect_scene(in ray r)
 			{
 				inter.material_index = planes[i].material_index;
 				inter.object_type = object_type_plane;
+				inter.object_index = int(i);
 				inter.position = r.origin + r.direction * temp_t;
 				inter.normal = normalize(planes[i].normal);
 				inter.t = temp_t;
@@ -514,75 +516,48 @@ intersection intersect_scene(in ray r)
 		} 
 	}
 
-	// and our single light source:
-	float temp_t;
-	if (intersect_area_light(scene_light, r, temp_t))
-	{
-		if (temp_t < inter.t)
-		{
-			inter.material_index = -1;
-			inter.object_type = object_type_area_light;
-			inter.position = r.origin + r.direction * temp_t;
-			inter.normal = -z_axis;
-			inter.t = temp_t;
-		}
-	}
+	// TODO quads
+	// ...
 
 	return inter;
 }
 
 vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 {
-	//vec3 r1 = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));
-	//vec3 r2 = normalize(hemisphere(inter.normal, rand_a, rand_b));
-	//vec3 r = mix(r1, r2, sin(push_constants.time) * 0.5 + 0.5);
-
 	vec3 rand_hemi = normalize(cos_weighted_hemisphere(inter.normal, rand_a, rand_b));;
-	//vec3 rand_hemi = normalize(hemisphere(inter.normal, rand_a, rand_b));
 	vec3 reflected = reflect(inter.incident, inter.normal);
 
 	// Diffuse is 0, metallic is 1.
 	return mix(rand_hemi, reflected, mtl.type);
 }
 
-vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout vec4 seed)
+vec3 sample_sphere_light(inout vec4 seed, inout float cos_a_max, in vec3 light_position, in float radius, in vec3 ray_origin)
 {
-	// See: http://www.cs.uu.nl/docs/vakken/magr/2015-2016/slides/lecture%2008%20-%20variance%20reduction.pdf
-	float rand_u = gpu_rnd(seed);
-	float rand_v = gpu_rnd(seed);
-	vec3 position_on_light_source = generate_sample_on_light(scene_light, rand_u, rand_v);
-	vec3 normal_of_light_source = y_axis;
+	 // Create a coordinate system for sampling
+    const vec3 sw = normalize(light_position - ray_origin);
+    const vec3 su = normalize(cross(abs(sw.x) > 0.01f ? y_axis : x_axis, sw));
+    const vec3 sv = cross(sw, su);
 
-	vec3 to_light_source = normalize(position_on_light_source - position);
+    // Determine the max angle
+    cos_a_max = sqrt(1.0f - (radius * radius) / dot(ray_origin - light_position, ray_origin - light_position));
+    
+    // Sample a sphere by solid angle
+    const float eps1 = gpu_rnd(seed);
+    const float eps2 = gpu_rnd(seed);
+    const float cos_a = 1.0f - eps1 + eps1 * cos_a_max;
+    const float sin_a = sqrt(1.0f - cos_a * cos_a);
+    const float phi = two_pi * eps2;
 
-	float falloff_at_light = dot(normal_of_light_source, -to_light_source);
-	float falloff_at_current_point = dot(normal, to_light_source);
+    vec3 to_light = su * cos(phi) * sin_a + sv * sin(phi) * sin_a + sw * cos_a;
 
-	if (falloff_at_light > 0.0 && falloff_at_current_point > 0.0)
-	{
-		ray r = { position, to_light_source };
-		intersection inter = intersect_scene(r);
-
-		// Check for occlusions.
-		if (inter.object_type == object_type_area_light)
-		{
-			float area = total_area(scene_light);
-			float dist = distance(position, position_on_light_source);
-			float solid_angle = (falloff_at_light * area) / (dist * dist);
-
-			return scene_light.intensity * solid_angle * brdf * falloff_at_current_point;
-		}
-
-	}
-
-	return black;
+    return normalize(to_light);
 }
 
 vec2 random_on_disk(inout vec4 seed)
 {
 	// http://mathworld.wolfram.com/DiskPointPicking.html
 	float radius = sqrt(gpu_rnd(seed));
-	float theta = 2.0 * pi * gpu_rnd(seed);
+	float theta = two_pi * gpu_rnd(seed);
 	
 	return vec2(radius * cos(theta), radius * sin(theta));
 }
@@ -592,25 +567,25 @@ vec3 trace()
 	// We want to make sure that we correct for the window's aspect ratio
 	// so that our final render doesn't look skewed or stretched when the
 	// resolution changes.
-	float aspect_ratio = push_constants.resolution.x / push_constants.resolution.y;
+	const float aspect_ratio = push_constants.resolution.x / push_constants.resolution.y;
 	vec2 uv = gl_FragCoord.xy / push_constants.resolution;
 
 	float t = push_constants.time;
-	vec4 seed = { uv.x + t * 41.13, 
-	              uv.y + t * 113.0, 
-	              uv.x - t * 7.57, 
-	              uv.y - t * 67.0 };
+	vec4 seed = { uv.x + t, 
+	              uv.y + t, 
+	              uv.x - t, 
+	              uv.y - t };
 	
 	vec3 final = black;
 	
-	vec3 offset = vec3(push_constants.cursor_position * 2.0 - 1.0, 0.0) * 8.0;
+	vec3 offset = vec3(push_constants.cursor_position * 2.0f - 1.0f, 0.0f) * 8.0f;
 	vec3 camera_position = vec3(0.0, -3.0, -8.5) + offset;
 
-	const float vertical_fov = 45.0;
-	const float aperture = 0.5;
-	const float lens_radius = aperture / 2.0;
-	const float theta = vertical_fov * pi / 180.0;
-	const float half_height = tan(theta * 0.5);
+	const float vertical_fov = 45.0f;
+	const float aperture = 0.5f;
+	const float lens_radius = aperture / 2.0f;
+	const float theta = vertical_fov * pi / 180.0f;
+	const float half_height = tan(theta * 0.5f);
 	const float half_width = aspect_ratio * half_height;
 
 	mat3 look_at = lookat(camera_position, origin);
@@ -622,6 +597,9 @@ vec3 trace()
 	vec3 horizontal = 2.0 * half_width * dist_to_focus * look_at[0];
 	vec3 vertical = 2.0 * half_height * dist_to_focus * look_at[1];
 
+    const vec3 light_position = { -1.0f, -5.0f, 1.0f };
+    const float light_radius = 0.75f;
+	
 	for (uint j = 0; j < number_of_iterations; ++j)
 	{
 		// By jittering the uv-coordinates a tiny bit here, we get 
@@ -630,6 +608,7 @@ vec3 trace()
 		jitter = jitter * 2.0 - 1.0;
 		uv += (jitter / push_constants.resolution) * anti_aliasing;
 		
+		// Depth-of-field calculation.
 		vec3 rd = lens_radius * vec3(random_on_disk(seed), 0.0);
 		vec3 lens_offset = look_at * vec3(rd.xy, 0.0);
 		vec3 ro = camera_position + lens_offset;
@@ -642,71 +621,157 @@ vec3 trace()
 
 		// Define some colors.
 		const vec3 sky = black;
-		vec3 color = black;
-		vec3 accumulated = white;
+		vec3 radiance = black;
+		vec3 throughput = white;
+
+		int prev_material_type = 0;
 
 		// This is the main path tracing loop.
 		for (uint i = 0; i < number_of_bounces; ++i)
 		{	
 			intersection inter = intersect_scene(r);
 
-			// Generate a pair of per-bounce random seeds.
-			float seed_a = gpu_rnd(seed);
-			float seed_b = gpu_rnd(seed);
+            // There were no intersections: simply accumulate the background color and break
+            if (inter.object_type == object_type_miss) 
+            {
+                radiance += throughput * sky;   
+                break;
+            }
+            // There was an intersection: accumulate color and bounce
+            else 
+            {
+            	material mtl = materials[inter.material_index];
 
-			//float pct = (gl_FragCoord.x / push_constants.resolution.x);
-			//bool next_event_estimation = bool(step(0.5, pct));
-			bool next_event_estimation = false;
+                const vec3 hit_location = r.origin + r.direction * inter.t;
 
-			if (inter.object_type == object_type_miss)
-			{
-				color += accumulated * sky;
-				break;
-			}
-			else if (inter.object_type == object_type_area_light)
-			{
-				if (next_event_estimation && i == 0) 
-				{
-					// Next event estimation - do nothing here!
-					// ...unless it's the first bounce.
-					color += scene_light.intensity * accumulated;
-				}
-				else {
-					color += scene_light.intensity * accumulated;
-				}
-				break;
-			}
+                // When using explicit light sampling, we have to account for a number of edge cases:
+                //
+                // 1. If this is the first bounce, and the object we hit is a light, we need to add its
+                //    color (otherwise, lights would appear black in the final render)
+                // 2. If the object we hit is a light, and the PREVIOUS object we hit was specular (a
+                //    metal or dielectric), we need to add its color (otherwise, lights would appear
+                //    black in mirror-like objects)
+                if ((j == 0 || 
+                    prev_material_type == material_type_dielectric || 
+                    prev_material_type == material_type_metallic) && 
+                    mtl.is_light) 
+                {
+                    radiance += throughput * mtl.reflectance;   
+                }
+            
+                // Set the new ray origin
+                r.origin = hit_location + inter.normal * epsilon;
 
-			// If we get here, that means we've hit an object.
-			// ...
+                // Choose a new ray direction based on the material type
+                if (mtl.type == material_type_diffuse)
+                {
 
-			// Calculate the origin and direction of the new, scattered ray.
-			material mtl = materials[inter.material_index];
-			r.origin = inter.position + inter.normal * epsilon;
-			r.direction = scatter(mtl, inter, seed_a, seed_b);
-			
-			float cos_theta = max(0.0, dot(inter.normal, r.direction));
+                    // Sample all of the light sources (right now we only have one)
+                    // ...
 
-			// Accumulate color.
-			if (mtl.type == material_type_diffuse)	
-			{
-				vec3 brdf = mtl.reflectance / pi;
-				accumulated *= 2.0 * pi * brdf * cos_theta;
+                    float cos_a_max = 0.0f;
+                    const vec3 light_position = spheres[2].center;
+                    const float light_radius = spheres[2].radius;
+                    vec3 to_light = sample_sphere_light(seed, cos_a_max, light_position, light_radius, r.origin);
 
-				if (next_event_estimation)
-				{	
-					color += accumulated * sample_light_source(inter.position, inter.normal, brdf, seed);
-				}	
-			}
-			else if (mtl.type == material_type_metallic)
-			{
-				accumulated *= mtl.reflectance;
-			}
+                    ray secondary_ray = { r.origin, to_light };
+
+                    intersection secondary_inter = intersect_scene(secondary_ray);
+                    material secondary_mtl = materials[secondary_inter.material_index];
+
+                    const float light_id = 3.0f;
+
+                    if (secondary_inter.t > 0.0f &&      						// We hit an object
+                        secondary_inter.object_type == object_type_sphere &&    
+                        secondary_mtl.is_light && 								// ...and that object was the light source 
+                        !mtl.is_light)      									// ...and the original object wasn't the light source (avoid self-intersection)  
+                    {
+                        const float omega = (1.0f - cos_a_max) * two_pi;
+                        const vec3 normal_towards_light = dot(inter.normal, r.direction) < 0.0f ? inter.normal : -inter.normal;
+
+                        const float pdf = max(0.0f, dot(to_light, normal_towards_light)) * omega * (1.0f / pi);
+
+                        radiance += throughput * (vec3(1.0, 0.98, 0.98) * 6.0f) * pdf; 
+                    }
+
+                    r.direction = normalize(cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)));
+
+                    // Accumulate material color
+                    const float cos_theta = max(0.0f, dot(inter.normal, r.direction));
+                    const float pdf = 1.0f / two_pi;
+                    const vec3 brdf = mtl.reflectance * (1.0f / pi);
+
+                    throughput *= (brdf / pdf) * cos_theta;  
+                }
+                else if (mtl.type == material_type_metallic)
+                {
+                    const float roughness = 0.0f;
+                    const vec3 offset = cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)) * roughness;
+                    r.direction = normalize(reflect(r.direction, inter.normal) + offset);
+                    
+                    throughput *= mtl.reflectance;      
+                }
+                else if (mtl.type == material_type_dielectric)
+                {
+                    // Snell's Law states:
+                    //
+                    //      n * sin(Ѳ) = n' * sin(Ѳ')
+                    //
+                    // where n is the "outer" medium and n' is the "inner" (i.e. the medium
+                    // that the ray is traveling into)
+                    const float ior = 1.0f / 1.31f;
+
+                    const vec3 normal = inter.normal;
+
+                    vec3 outward_normal;
+
+                    float ni_over_nt;
+                    float cosine;
+
+                    if (dot(normal, r.direction) > 0.0f) 
+                    {
+                        // We are inside the medium: flip the outward-facing normal
+                        outward_normal = -normal;
+                        ni_over_nt = 1.0f / ior;
+                        cosine = ni_over_nt * dot(r.direction, normal) / length(r.direction);
+                    } 
+                    else 
+                    {
+                        outward_normal = normal;
+                        ni_over_nt = ior;
+                        cosine = -dot(r.direction, normal) / length(r.direction);
+                    }
+
+                    const vec3 reflected = reflect(r.direction, normal);
+                    const vec3 refracted = refract(r.direction, outward_normal, ni_over_nt);
+
+                    // Check for total internal reflection
+                    float probability_of_reflection = (refracted == vec3(0.0f)) ? 1.0f : schlick(cosine, ior);
+
+                    // Set new ray origin and direction
+                    r.origin = hit_location + r.direction * epsilon;
+                    r.direction = (gpu_rnd(seed) < probability_of_reflection) ? reflected : refracted;
+
+                    // TODO: Fresnel effect
+                    //throughput *= payload_pri.albedo;
+                }
+
+                prev_material_type = mtl.type;
+#ifdef RUSSIAN_ROULETTE
+                // See: https://computergraphics.stackexchange.com/questions/2316/is-russian-roulette-really-the-answer
+                //
+                // Bright objects (higher throughput) encourage more bounces
+                const float probality_of_termination = max3(throughput);
+
+                if (gpu_rnd(seed) > probality_of_termination) break;
+
+                // Make sure the final render is unbiased
+                throughput *= 1.0f / probality_of_termination;
+#endif
+            }
 		}
-
-		final += color; 
+		final += radiance; 
 	}
-
 	return final / float(number_of_iterations);
 }
 

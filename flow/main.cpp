@@ -457,56 +457,56 @@ public:
 		// Create all of the structs used for pipeline creation: the only thing different between the two
 		// pipelines will be the `vk::PipelineShaderStageCreateInfo` below
 		const char* entry_point = "main";
-auto vs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vs_module_quad.get(), entry_point };
-auto fs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_pathtrace.get(), entry_point };
-vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] = { vs_stage_create_info, fs_stage_create_info };
+		auto vs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vs_module_quad.get(), entry_point };
+		auto fs_stage_create_info = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_pathtrace.get(), entry_point };
+		vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] = { vs_stage_create_info, fs_stage_create_info };
 
-auto vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo{};
+		auto vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo{};
 
-auto input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo{ {}, vk::PrimitiveTopology::eTriangleList };
+		auto input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo{ {}, vk::PrimitiveTopology::eTriangleList };
 
-const float min_depth = 0.0f;
-const float max_depth = 1.0f;
-const vk::Viewport viewport{ 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), min_depth, max_depth };
-const vk::Rect2D scissor{ { 0, 0 }, swapchain_extent };
-auto viewport_state_create_info = vk::PipelineViewportStateCreateInfo{ {}, 1, &viewport, 1, &scissor };
+		const float min_depth = 0.0f;
+		const float max_depth = 1.0f;
+		const vk::Viewport viewport{ 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), min_depth, max_depth };
+		const vk::Rect2D scissor{ { 0, 0 }, swapchain_extent };
+		auto viewport_state_create_info = vk::PipelineViewportStateCreateInfo{ {}, 1, &viewport, 1, &scissor };
 
-auto rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo{}
-.setFrontFace(vk::FrontFace::eClockwise)
-.setCullMode(vk::CullModeFlagBits::eBack)
-.setLineWidth(1.0f);
+		auto rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo{}
+			.setFrontFace(vk::FrontFace::eClockwise)
+			.setCullMode(vk::CullModeFlagBits::eBack)
+			.setLineWidth(1.0f);
 
-auto multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo{};
+		auto multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo{};
 
-auto color_blend_attachment_state = vk::PipelineColorBlendAttachmentState{}
-.setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+		auto color_blend_attachment_state = vk::PipelineColorBlendAttachmentState{}
+			.setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
 
-auto color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo{}
-.setPAttachments(&color_blend_attachment_state)
-.setAttachmentCount(1);
+		auto color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo{}
+			.setPAttachments(&color_blend_attachment_state)
+			.setAttachmentCount(1);
 
-auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo{}
-.setPStages(shader_stage_create_infos)
-.setStageCount(2)
-.setPVertexInputState(&vertex_input_state_create_info)
-.setPInputAssemblyState(&input_assembly_create_info)
-.setPViewportState(&viewport_state_create_info)
-.setPRasterizationState(&rasterization_state_create_info)
-.setPMultisampleState(&multisample_state_create_info)
-.setPColorBlendState(&color_blend_state_create_info)
-.setLayout(pipeline_layout.get())
-.setRenderPass(render_pass.get())
-.setSubpass(0);
+		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo{}
+			.setPStages(shader_stage_create_infos)
+			.setStageCount(2)
+			.setPVertexInputState(&vertex_input_state_create_info)
+			.setPInputAssemblyState(&input_assembly_create_info)
+			.setPViewportState(&viewport_state_create_info)
+			.setPRasterizationState(&rasterization_state_create_info)
+			.setPMultisampleState(&multisample_state_create_info)
+			.setPColorBlendState(&color_blend_state_create_info)
+			.setLayout(pipeline_layout.get())
+			.setRenderPass(render_pass.get())
+			.setSubpass(0);
 
-// Create the pipeline for pathtracing
-pipeline_pathtrace = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
+		// Create the pipeline for pathtracing
+		pipeline_pathtrace = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
 
-// Switch the fragment shader module and subpass index
-shader_stage_create_infos[1] = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_composite.get(), entry_point };
-graphics_pipeline_create_info.setSubpass(1);
-pipeline_composite = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
+		// Switch the fragment shader module and subpass index
+		shader_stage_create_infos[1] = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fs_module_composite.get(), entry_point };
+		graphics_pipeline_create_info.setSubpass(1);
+		pipeline_composite = device->createGraphicsPipelineUnique({}, graphics_pipeline_create_info);
 
-LOG_DEBUG("Created graphics pipelines");
+		LOG_DEBUG("Created graphics pipelines");
 	}
 
 	void initialize_ping_pong_images()
