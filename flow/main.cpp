@@ -195,6 +195,9 @@ public:
 		initialize_descriptor_pool();
 		initialize_sampler();
 		initialize_descriptor_sets();
+
+		// Query pool
+		initialize_query_pool();
 	}
 
 	void initialize_window()
@@ -237,7 +240,8 @@ public:
 		assert(!physical_devices.empty());
 		physical_device = physical_devices[0];
 
-		auto queue_family_properties = physical_device.getQueueFamilyProperties();
+		physical_device_properties = physical_device.getProperties();
+		queue_family_properties = physical_device.getQueueFamilyProperties();
 
 		const float priority = 0.0f;
 		auto predicate = [](const vk::QueueFamilyProperties& item) { return item.queueFlags & vk::QueueFlagBits::eGraphics; };
@@ -635,8 +639,10 @@ public:
 		int frame_offset = (total_frames_elapsed % 2 == 0) ? 0: 1;
 
 		command_buffers[index]->begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse });
+		command_buffers[index]->resetQueryPool(query_pool.get(), 0, 2);
 		command_buffers[index]->beginRenderPass(vk::RenderPassBeginInfo{ render_pass.get(), ping_pong_framebuffers[index * 2 + frame_offset].get(), render_area, 2, clear_values }, vk::SubpassContents::eInline);
-	
+		command_buffers[index]->writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, query_pool.get(), 0);
+
 		// TODO: this does not work if it is a bool?
 		float mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ? 1.0f : 0.0f;
 
@@ -681,6 +687,7 @@ public:
 		command_buffers[index]->draw(6, 1, 0, 0);
 
 		// End the renderpass
+		command_buffers[index]->writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, query_pool.get(), 1);
 		command_buffers[index]->endRenderPass();
 		command_buffers[index]->end();
 	}
@@ -833,6 +840,39 @@ public:
 		LOG_DEBUG("Wrote descriptor set(s)");
 	}
 
+	void initialize_query_pool()
+	{
+		uint32_t timestamp_valid_bits = queue_family_properties[0].timestampValidBits;
+		if (timestamp_valid_bits == 0)
+		{
+			throw std::runtime_error("Timestamp queries are not supported on this queue");
+		}
+		else
+		{
+			LOG_DEBUG("Valid timestamp bits: " << timestamp_valid_bits);
+		}
+
+		query_pool = device->createQueryPoolUnique(vk::QueryPoolCreateInfo{ {}, vk::QueryType::eTimestamp, 2, {} });
+
+		// Reset the query pool
+		single_time_commands([&](vk::CommandBuffer command_buffer) 
+		{
+			command_buffer.resetQueryPool(query_pool.get(), 0, 2);
+		});
+	}
+
+	void single_time_commands(std::function<void(vk::CommandBuffer)> func)
+	{
+		auto command_buffer = std::move(device->allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo{ command_pool.get(), vk::CommandBufferLevel::ePrimary, 1 })[0]);
+
+		command_buffer->begin({ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+		func(command_buffer.get());
+		command_buffer->end();
+
+		queue.submit(vk::SubmitInfo{ 0, nullptr, nullptr, 1, &command_buffer.get() }, {});
+		queue.waitIdle();
+	}
+
 	void draw()
 	{
 		while (!glfwWindowShouldClose(window)) 
@@ -859,6 +899,24 @@ public:
 
 			samples_per_pixel++;
 			total_frames_elapsed++;
+
+			// Get query results
+			{
+				uint32_t begin = 0;
+				uint32_t end = 0;
+				device->getQueryPoolResults(query_pool.get(), 0, 1, sizeof(uint32_t), &begin, 1, vk::QueryResultFlagBits::eWait);
+				device->getQueryPoolResults(query_pool.get(), 1, 1, sizeof(uint32_t), &end, 1, vk::QueryResultFlagBits::eWait);
+
+				// The number of nanoseconds represented by a single increment of this device's timestamp
+				const float period_in_ns = physical_device_properties.limits.timestampPeriod;
+				const float nanoseconds = (end - begin) * period_in_ns;
+				const float milliseconds = nanoseconds / 1e6f;
+
+				std::stringstream ss;
+				ss << "rtx_raytracing " << " [" << milliseconds << " frame time (ms)]";
+
+				glfwSetWindowTitle(window, ss.str().c_str());
+			}
 		}
 	}
 
@@ -882,6 +940,8 @@ private:
 	vk::Extent2D swapchain_extent;
 
 	vk::PhysicalDevice physical_device;
+	vk::PhysicalDeviceProperties physical_device_properties;
+	std::vector<vk::QueueFamilyProperties> queue_family_properties;
 	vk::DebugReportCallbackEXT debug_report_callback;
 	vk::Queue queue;
 	uint32_t queue_family_index;
@@ -917,6 +977,8 @@ private:
 
 	// Least common multiple of the number of swapchain images (3) and number of ping-pong buffers (2)
 	std::vector<vk::UniqueFramebuffer> ping_pong_framebuffers;
+
+	vk::UniqueQueryPool query_pool;
 };
 
 int main()
