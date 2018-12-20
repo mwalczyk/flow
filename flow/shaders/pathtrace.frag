@@ -15,55 +15,60 @@ layout(push_constant) uniform PushConstants
 	float time;
 	float frame_counter;
 	vec2 resolution;
-	vec2 cursor_position;
-	float mouse_down;
+	vec4 cursor_position;
+	float l_mouse_down;
+	float r_mouse_down;
 } push_constants;
 
 layout(location = 0) out vec4 o_color;
 
-/****************************************************************************************************
- *
- * Scene Definition
- *
- ***************************************************************************************************/
+// Define the scene.
 material materials[] = 
 {
-	{ { 0.90f, 0.80f, 0.10f }, material_type_metallic, false }, 
-	{ { 0.90f, 0.10f, 0.20f }, material_type_diffuse, false },
-	{ { 0.97f, 1.00f, 0.97f }, material_type_diffuse, false }, 	// Off-white
+	{ { 1.00f, 0.79f, 0.23f }, material_type_metallic, false }, 
+	{ { 0.90f, 0.10f, 0.20f }, material_type_dielectric, false },
+	{ { 0.97f, 1.00f, 0.97f }, material_type_diffuse, false }, 		// Off-white
 
-	{ { 1.00f, 0.35f, 0.37f }, material_type_diffuse, false }, 	// Pink
-    { { 0.54f, 0.79f, 0.15f }, material_type_diffuse, false }, 	// Mint
-    { { 0.10f, 0.51f, 0.77f }, material_type_diffuse, false }, 	// Dark mint
-	{ { 1.00f, 0.79f, 0.23f }, material_type_diffuse, false },	// Yellow
-	{ { 0.42f, 0.30f, 0.58f }, material_type_diffuse, false }, 	// Purple
+	{ { 1.00f, 0.35f, 0.37f }, material_type_diffuse, false }, 		// Pink
+    { { 0.54f, 0.79f, 0.15f }, material_type_diffuse, false }, 		// Mint
+    { { 0.10f, 0.51f, 0.77f }, material_type_diffuse, false }, 		// Dark mint
+	{ { 1.00f, 0.79f, 0.23f }, material_type_diffuse, false },		// Yellow
+	{ { 0.42f, 0.30f, 0.58f }, material_type_diffuse, false }, 		// Purple
 
-	{ { 5.00f, 5.00f, 5.00f }, material_type_diffuse, true },  	// Light
+	{ { 5.00f, 4.80f, 4.80f }, material_type_diffuse, true },  		// *Light
 };
 
 sphere spheres[] = 
 {
-	{ 0.55, vec3( -1.4,  0.4, -1.3), 0 },
-	{ 0.20, vec3(  1.0,  0.7, -1.6), 1 },
-	{ 1.50, vec3(  0.0, -0.6,  0.0), 2 },
-	{ 0.50, vec3( -1.4, -2.6, -1.5), 8 }
+	{ 0.55, vec3( -1.4, -0.55f, -1.3), 0 },
+	{ 0.75, vec3(  1.0, -0.75f, -1.6), 2 },
+	{ 1.50, vec3(  0.0, -1.50f,  0.0), 1 },
+	{ 0.50, vec3( -2.4, -2.50f,  2.0), 8 },
+	{ 0.30, vec3( -0.6, -0.30f, -1.8), 7 },
 };
 
 plane planes[] = 
 {
-	{ -z_axis,  z_axis * 5.5, 6 }, // Back
+	{ -z_axis,  z_axis * 5.5, 2 }, // Back
 	{  z_axis, -z_axis * 8.5, 2 }, // Front
-	{ -x_axis,  x_axis * 4.5, 3 }, // Left
-	{  x_axis, -x_axis * 4.5, 4 }, // Right
-	{  y_axis, -y_axis * 4.5, 7 }, // Top
-	{ -y_axis,  y_axis * 1.0, 2 }  // Bottom
+	{ -x_axis,  x_axis * 4.5, 2 }, // Left
+	{  x_axis, -x_axis * 4.5, 2 }, // Right
+	{  y_axis, -y_axis * 5.0, 2 }, // Top
+	{ -y_axis,  y_axis * 0.0, 2 }  // Bottom
+
+	// { -z_axis,  z_axis * 5.5, 6 }, // Back
+	// {  z_axis, -z_axis * 5.5, 2 }, // Front
+	// { -x_axis,  x_axis * 4.5, 3 }, // Left
+	// {  x_axis, -x_axis * 4.5, 4 }, // Right
+	// {  y_axis, -y_axis * 5.0, 7 }, // Top
+	// { -y_axis,  y_axis * 0.0, 2 }  // Bottom
 };
 
-/****************************************************************************************************
- *
- * Tracing Routine
- *
- ***************************************************************************************************/
+quad quads[] =
+{
+	build_quad(4.0f, 4.0f, vec3(3.0f, -2.0f, 0.0f), to_radians(90.0f), 5)
+};
+
 intersection intersect_scene(in ray r)
 {
 	// This function simply iterates through all of the objects in our scene, 
@@ -126,8 +131,29 @@ intersection intersect_scene(in ray r)
 		} 
 	}
 
-	// TODO quads
-	// ...
+	// then quads:
+	for(uint i = 0u; i < quads.length(); ++i)
+	{	
+		// Did the ray intersect this object?
+		float temp_t;
+		if (intersect_quad(quads[i], r, temp_t))
+		{
+			// Was the intersection closer than any previous one?
+			if (temp_t < inter.t)
+			{
+				const vec3 edge0 = quads[i].ur - quads[i].ul;
+				const vec3 edge1 = quads[i].ll - quads[i].ul;
+				const vec3 normal = normalize(cross(edge0, edge1));
+
+				inter.material_index = quads[i].material_index;
+				inter.object_type = object_type_quad;
+				inter.object_index = int(i);
+				inter.position = r.origin + r.direction * temp_t;
+				inter.normal = normal;
+				inter.t = temp_t;
+			}
+		} 
+	}
 
 	return inter;
 }
@@ -139,67 +165,65 @@ vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
 	return vec3(0.0f);
 }
 
-ray get_ray(in vec2 uv)
-{
-	vec3 o = vec3(1.0f);
-	vec3 d = vec3(1.0f);
-	return ray(o, d);
-}
-
-#define  RUSSIAN_ROULETTE
-
-vec3 trace()
+ray get_ray(inout vec4 seed, in vec2 uv)
 {
 	// We want to make sure that we correct for the window's aspect ratio
 	// so that our final render doesn't look skewed or stretched when the
 	// resolution changes.
 	const float aspect_ratio = push_constants.resolution.x / push_constants.resolution.y;
-	vec2 uv = gl_FragCoord.xy / push_constants.resolution;
 
-	float t = push_constants.time;
-	vec4 seed = { uv.x + t, 
-	              uv.y + t, 
-	              uv.x - t, 
-	              uv.y - t };
-	
-	vec3 final = black;
-	
-	vec3 offset = vec3(0.0f);// vec3(push_constants.cursor_position * 2.0f - 1.0f, 0.0f) * 8.0f;
-	vec3 camera_position = vec3(0.0, -3.0, -10.5) + offset;
+	const vec3 offset = vec3(push_constants.cursor_position.xy * 2.0f - 1.0f, 0.0f) * 8.0f;
+	const vec3 camera_position = vec3(0.0f, -4.0f, -10.5f) + offset;
 
 	const float vertical_fov = 60.0f;
 	const float aperture = 0.5f;
-	const float lens_radius = aperture / 2.0f;
-	const float theta = vertical_fov * pi / 180.0f;
+	const float lens_radius = aperture * 0.5f;
+	const float theta = to_radians(vertical_fov);
 	const float half_height = tan(theta * 0.5f);
 	const float half_width = aspect_ratio * half_height;
 
-	const mat3 look_at = lookat(camera_position, origin);
-	const float dist_to_focus = length(camera_position);
+	const mat3 look_at = lookat(camera_position, origin + vec3(0.0f, -1.25f, 0.0f));
+	const float dist_to_focus = push_constants.cursor_position.w * 5.0f + 5.0f; //length(camera_position);
 
 	const vec3 lower_left_corner = camera_position - look_at * vec3(half_width, half_height, 1.0f) * dist_to_focus;
 	const vec3 horizontal = 2.0f * half_width * dist_to_focus * look_at[0];
 	const vec3 vertical = 2.0f * half_height * dist_to_focus * look_at[1];
 
-	for (uint j = 0; j < number_of_iterations; ++j)
-	{
-		// By jittering the uv-coordinates a tiny bit here, we get "free" anti-aliasing.
-		vec2 jitter = { gpu_rnd(seed), gpu_rnd(seed) };
-		jitter = jitter * 2.0 - 1.0;
-		uv += (jitter / push_constants.resolution) * anti_aliasing;
-		
-		// Depth-of-field calculation.
-		vec3 rd = lens_radius * vec3(random_on_disk(seed), 0.0f);
-		vec3 lens_offset = look_at * vec3(rd.xy, 0.0f);
-		vec3 ro = camera_position + lens_offset;
-		rd = lower_left_corner + uv.x * horizontal + uv.y * vertical - camera_position - lens_offset;
+	// By jittering the uv-coordinates a tiny bit here, we get "free" anti-aliasing.
+	vec2 jitter = { gpu_rnd(seed), gpu_rnd(seed) };
+	jitter = jitter * 2.0f - 1.0f;
+	uv += (jitter / push_constants.resolution) * anti_aliasing;
+	
+	// Depth-of-field calculation.
+	vec3 rd = lens_radius * vec3(random_on_disk(seed), 0.0f);
+	vec3 lens_offset = look_at * vec3(rd.xy, 0.0f);
+	vec3 ro = camera_position + lens_offset;
+	rd = lower_left_corner + uv.x * horizontal + uv.y * vertical - camera_position - lens_offset;
 
+	rd = normalize(rd);
+
+	return ray(ro, rd);
+}
+
+#define RUSSIAN_ROULETTE
+
+vec3 trace()
+{
+	vec2 uv = gl_FragCoord.xy / push_constants.resolution;
+
+	float t = push_constants.time;
+	vec4 seed = { uv.x + t, uv.y + t, uv.x - t, uv.y - t };
+	
+	vec3 final = black;
+	const vec3 sky = black;
+
+	for (uint i = 0; i < number_of_iterations; ++i)
+	{
 		// Calculate the ray direction based on the current fragment's uv-coordinates. All 
 		// rays will originate from the camera's location. 		
-		ray r = { ro, rd };
+		ray r = get_ray(seed, uv);
 
 		// Define some colors.
-		const vec3 sky = black;
 		vec3 radiance = black;
 		vec3 throughput = white;
 
@@ -208,7 +232,7 @@ vec3 trace()
 		int prev_material_type = 0;
 
 		// This is the main path tracing loop.
-		for (uint i = 0; i < number_of_bounces; ++i)
+		for (uint j = 0; j < number_of_bounces; ++j)
 		{	
 			intersection inter = intersect_scene(r);
 
@@ -216,11 +240,12 @@ vec3 trace()
             if (inter.object_type == object_type_miss) 
             {
                 radiance += throughput * sky;   
-                break;
             }
             // There was an intersection: accumulate color and bounce.
             else 
             {
+            	const vec3 light_c = rainbow(inter.position.x * 0.1f + 0.1f) * 5.0f;
+
             	material mtl = materials[inter.material_index];
 
                 const vec3 hit_location = r.origin + r.direction * inter.t;
@@ -237,7 +262,8 @@ vec3 trace()
                     prev_material_type == material_type_metallic) && 
                     mtl.is_light) 
                 {
-                    radiance += throughput * mtl.reflectance;   
+                    radiance += throughput * light_c;//mtl.reflectance;
+                    break;   
                 }
             
                 // Set the new ray origin.
@@ -247,29 +273,30 @@ vec3 trace()
                 if (mtl.type == material_type_diffuse)
                 {
 
-                    // Sample all of the light sources (right now we only have one)
+                    // Here, we explicitly sample each of the light sources in our scene.
+                    // Obviously, for scenes with many lights, this would be prohibitively 
+                    // expensive. So, if we're using `n` lights, we randomly choose one
+                    // light to sample and divide its contribution by `n`.
                     // ...
 
                     float cos_a_max = 0.0f;
-                    const vec3 light_position = spheres[3].center;
-                    const float light_radius = spheres[3].radius;
-                    vec3 to_light = sample_sphere_light(seed, cos_a_max, light_position, light_radius, r.origin);
+                    const vec3 to_light = sample_sphere_light(seed, cos_a_max, spheres[3].center, spheres[3].radius, r.origin);
 
                     // Items resulting from the shadow ray.
                     const ray secondary_r = { r.origin, to_light };
                     const intersection secondary_inter = intersect_scene(secondary_r);
                     const material secondary_mtl = materials[secondary_inter.material_index];
 
-                    if (secondary_inter.t > 0.0f &&      						// We hit an object
-                        secondary_mtl.is_light && 								// ...and that object was the light source 
-                        !mtl.is_light)      									// ...and the original object wasn't the light source (avoid self-intersection).  
+                    if (secondary_inter.t > 0.0f &&     // We hit an object
+                        secondary_mtl.is_light && 		// ...and that object was the light source 
+                        !mtl.is_light)      			// ...and the original object wasn't the light source (avoid self-intersection).  
                     {
                         const float omega = (1.0f - cos_a_max) * two_pi;
                         const vec3 normal_towards_light = dot(inter.normal, r.direction) < 0.0f ? inter.normal : -inter.normal;
 
                         const float pdf = max(0.0f, dot(to_light, normal_towards_light)) * omega * one_over_pi;
 
-                        radiance += throughput * secondary_mtl.reflectance * pdf; 
+                        radiance += throughput * light_c * pdf;//secondary_mtl.reflectance * pdf; 
                     }
 
                     r.direction = normalize(cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)));
@@ -283,8 +310,9 @@ vec3 trace()
                 }
                 else if (mtl.type == material_type_metallic)
                 {
-                    const float roughness = 0.0f;
+                    const float roughness = 0.25f;
                     const vec3 offset = cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)) * roughness;
+                    
                     r.direction = normalize(reflect(r.direction, inter.normal) + offset);
                     
                     throughput *= mtl.reflectance;      
@@ -297,7 +325,7 @@ vec3 trace()
                     //
                     // where n is the "outer" medium and n' is the "inner" (i.e. the medium
                     // that the ray is traveling into)
-                    const float ior = 1.0f / 1.31f;
+                    const float ior = 1.0f / 1.91f;
 
                     const vec3 normal = inter.normal;
 
@@ -305,6 +333,8 @@ vec3 trace()
 
                     float ni_over_nt;
                     float cosine;
+
+                    //r.direction = normalize(r.direction);
 
                     if (dot(normal, r.direction) > 0.0f) 
                     {
@@ -326,12 +356,13 @@ vec3 trace()
                     // Check for total internal reflection
                     float probability_of_reflection = (refracted == vec3(0.0f)) ? 1.0f : schlick(cosine, ior);
 
-                    // Set new ray origin and direction
                     r.origin = hit_location + r.direction * epsilon;
                     r.direction = (gpu_rnd(seed) < probability_of_reflection) ? reflected : refracted;
 
+                    r.direction = normalize(r.direction);
+
                     // TODO: Fresnel effect
-                    //throughput *= payload_pri.albedo;
+                    // ...
                 }
 
                 prev_material_type = mtl.type;
@@ -348,6 +379,9 @@ vec3 trace()
 #endif
             }
 		}
+#ifdef CLAMP_FIREFLIES
+		radiance = clamp(vec3(0.0f), vec3(3.0f), radiance);
+#endif
 		final += radiance; 
 	}
 	return final / float(number_of_iterations);
@@ -364,7 +398,7 @@ void main()
 	vec3 prev_frame = texture(u_image, uv).rgb;
 	vec3 curr_frame = trace_color;
 
-	if (push_constants.mouse_down == 1.0f)
+	if (push_constants.l_mouse_down == 1.0f || push_constants.r_mouse_down == 1.0f)
 	{
 		o_color = vec4(curr_frame, 1.0f);
 	}

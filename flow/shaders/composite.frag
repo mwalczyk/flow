@@ -20,11 +20,11 @@ void main()
 
 	vec3 total = subpassLoad(u_accumulated).rgb;
 
-	// Normalize the HDR input
-	if (push_constants.mouse_down != 1.0)
+	// Normalize the HDR input by dividing by the number of frames.
+	if (push_constants.mouse_down != 1.0f)
 	{
-		total /= push_constants.frame_counter + 1.0;
+		total /= push_constants.frame_counter + 1.0f;
 	}
 
-    o_color = vec4(total, 1.0);
+    o_color = vec4(total, 1.0f);
 }

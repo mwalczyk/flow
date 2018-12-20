@@ -24,8 +24,9 @@ struct alignas(8) PushConstants
 	float time;
 	float frame_counter;
 	float resolution[2];
-	float mouse[2];
-	float mouse_down;
+	float mouse[4];
+	float l_mouse_down;
+	float r_mouse_down;
 	/* Add more members here: mind the struct alignment */
 };
 
@@ -128,7 +129,14 @@ public:
 			Application* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
 			app->cursor_position[0] = static_cast<float>(xpos) / static_cast<float>(app->width);
 			app->cursor_position[1] = static_cast<float>(ypos) / static_cast<float>(app->height);
+		} 
+		else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+		{
+			Application* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+			app->cursor_position[2] = static_cast<float>(xpos) / static_cast<float>(app->width);
+			app->cursor_position[3] = static_cast<float>(ypos) / static_cast<float>(app->height);
 		}
+
 	}
 
 	void resize()
@@ -452,7 +460,7 @@ public:
 	void initialize_pipelines()
 	{
 		// First, load all of the shader modules
-		const std::string path_prefix = "";
+		const std::string path_prefix = "shaders/";
 		auto vs_module_quad = load_spv_into_module(device, path_prefix + "quad.spv");
 		auto fs_module_pathtrace = load_spv_into_module(device, path_prefix + "pathtrace.spv");
 		auto fs_module_composite = load_spv_into_module(device, path_prefix + "composite.spv");
@@ -627,10 +635,6 @@ public:
 	{
 		const vk::Rect2D render_area{ { 0, 0 }, swapchain_extent };
 
-		double xpos;
-		double ypos;
-		glfwGetCursorPos(window, &xpos, &ypos);
-
 		const vk::ClearValue clear_values[] = {
 			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }, // TODO: is this value needed? 
 			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }
@@ -644,9 +648,10 @@ public:
 		command_buffers[index]->writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, query_pool.get(), 0);
 
 		// TODO: this does not work if it is a bool?
-		float mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ? 1.0f : 0.0f;
+		float l_mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ? 1.0f : 0.0f;
+		float r_mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS ? 1.0f : 0.0f;
 
-		if (mouse_down == 1.0f)
+		if (l_mouse_down == 1.0f || r_mouse_down == 1.0f)
 		{
 			samples_per_pixel = 0;
 		}
@@ -659,7 +664,10 @@ public:
 			static_cast<float>(height),
 			cursor_position[0],
 			cursor_position[1],
-			mouse_down
+			cursor_position[2],
+			cursor_position[3],
+			l_mouse_down,
+			r_mouse_down
 		};
 
 		command_buffers[index]->pushConstants(pipeline_layout.get(), vk::ShaderStageFlagBits::eFragment, 0, sizeof(push_constants), &push_constants);
@@ -926,7 +934,7 @@ private:
 	std::string name;
 	uint32_t samples_per_pixel;
 	uint32_t total_frames_elapsed;
-	float cursor_position[2];
+	float cursor_position[4];
 
 	GLFWwindow* window;
 

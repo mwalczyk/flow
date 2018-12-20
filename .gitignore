@@ -6,7 +6,7 @@
 # Custom
 build/
 third_party/
-flow/*.spv
+flow/shaders/*.spv
 
 # User-specific files
 *.suo

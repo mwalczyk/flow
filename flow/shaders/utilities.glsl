@@ -23,6 +23,36 @@ const vec3 green = { 0.0, 1.0, 0.0 };
 const vec3 blue = { 0.0, 0.0, 1.0 };
 const float _ignored = -1.0;
 
+float to_radians(float degrees)
+{
+	return degrees * (pi / 180.0f);
+}
+
+mat4 rotation(in vec3 axis, float angle)
+{
+	// From Neil Mendoza
+    axis = normalize(axis);
+    float s = sin(angle);
+    float c = cos(angle);
+    float oc = 1.0f - c;
+    
+    return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0f,
+                oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0f,
+                oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0f,
+                0.0f,                               0.0f,                               0.0f,                               1.0f);
+}
+
+vec3 palette(in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d)
+{
+	// From IQ
+    return a + b * cos(two_pi * (c * t + d));
+}
+
+vec3 rainbow(in float t)
+{
+	return palette(t, vec3(0.5f), vec3(0.5f), white, vec3(0.0f, 0.33f, 0.67f));
+}
+
 float gpu_rnd(inout vec4 state) 
 {
 	// PRNG based on a weighted sum of four instances of the multiplicative linear congruential 
@@ -38,13 +68,6 @@ float gpu_rnd(inout vec4 state)
 	state = p + beta;
 
 	return fract(dot(state / m, vec4(1.0, -1.0, 1.0, -1.0)));
-}
-
-vec3 palette(in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d)
-{
-	// A wonderful function from Inigo Quilez for generating color 
-	// palettes: http://iquilezles.org/www/articles/palettes/palettes.htm
-    return a + b * cos(2.0 * pi * (c * t + d));
 }
 
 mat3 lookat(in vec3 from, in vec3 to)
