@@ -5,7 +5,7 @@ const float one_over_two_pi = 1.0f / two_pi;
 
 const float gamma = 1.0f / 2.2f;
 const float anti_aliasing = 0.5f;
-const uint number_of_iterations = 10;
+const uint number_of_iterations = 4;
 const uint number_of_bounces = 10;
 const float epsilon = 0.001f;
 const float min_distance = 0.0f;

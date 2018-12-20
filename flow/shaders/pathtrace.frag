@@ -36,15 +36,23 @@ material materials[] =
 	{ { 0.42f, 0.30f, 0.58f }, material_type_diffuse, false }, 		// Purple
 
 	{ { 5.00f, 4.80f, 4.80f }, material_type_diffuse, true },  		// *Light
+
+	{red, material_type_diffuse, false }, 
+	{ rainbow(0.1f), material_type_diffuse, false }, 
+	{ rainbow(0.2f), material_type_diffuse, false }, 
+	{ rainbow(0.3f), material_type_diffuse, false }, 
+	{ rainbow(0.4f), material_type_diffuse, false }, 
+	{ rainbow(0.5f), material_type_diffuse, false }, 
+	{ rainbow(0.6f), material_type_diffuse, false }, 
 };
 
 sphere spheres[] = 
 {
-	{ 0.55, vec3( -1.4, -0.55f, -1.3), 0 },
-	{ 0.75, vec3(  1.0, -0.75f, -1.6), 2 },
+	{ 0.55, vec3( -1.4, -0.55f, -1.3), 1 },
+	{ 0.75, vec3(  1.0, -0.75f, -1.6), 1 },
 	{ 1.50, vec3(  0.0, -1.50f,  0.0), 1 },
-	{ 0.50, vec3( -2.4, -2.50f,  2.0), 8 },
-	{ 0.30, vec3( -0.6, -0.30f, -1.8), 7 },
+	{ 0.90, vec3( -2.0, -2.70f,  3.0), 8 },
+	{ 0.30, vec3( -0.6, -0.30f, -1.8), 1 },
 };
 
 plane planes[] = 
@@ -55,19 +63,24 @@ plane planes[] =
 	{  x_axis, -x_axis * 4.5, 2 }, // Right
 	{  y_axis, -y_axis * 5.0, 2 }, // Top
 	{ -y_axis,  y_axis * 0.0, 2 }  // Bottom
-
-	// { -z_axis,  z_axis * 5.5, 6 }, // Back
-	// {  z_axis, -z_axis * 5.5, 2 }, // Front
-	// { -x_axis,  x_axis * 4.5, 3 }, // Left
-	// {  x_axis, -x_axis * 4.5, 4 }, // Right
-	// {  y_axis, -y_axis * 5.0, 7 }, // Top
-	// { -y_axis,  y_axis * 0.0, 2 }  // Bottom
 };
 
 quad quads[] =
 {
-	build_quad(4.0f, 4.0f, vec3(3.0f, -2.0f, 0.0f), to_radians(90.0f), 5)
+	build_quad(7.0f, 4.0f, vec3( 3.5f, -2.0f, 0.0f), to_radians( 90.0f), 5),
+	build_quad(7.0f, 1.0f, vec3(-3.5f, -2.0f, 0.0f), to_radians(-90.0f), 7)
 };
+
+// quad quads[] =
+// {
+// 	build_quad(0.4f, 1.0f, vec3(-3.0f, -0.5f, -2.0f), to_radians(180.0f), 9),
+// 	build_quad(0.4f, 1.2f, vec3(-3.0f, -0.6f, -1.0f), to_radians(180.0f), 10),
+// 	build_quad(0.4f, 1.4f, vec3(-3.0f, -0.7f, 0.0f), to_radians(180.0f), 11),
+// 	build_quad(0.4f, 1.6f, vec3(-3.0f, -0.8f, 1.0f), to_radians(180.0f), 12),
+// 	build_quad(0.4f, 1.8f, vec3(-3.0f, -0.9f, 2.0f), to_radians(180.0f), 13),
+// 	build_quad(0.4f, 2.0f, vec3(-3.0f, -1.0f, 3.0f), to_radians(180.0f), 14),
+// 	build_quad(0.4f, 2.2f, vec3(-3.0f, -1.1f, 4.0f), to_radians(180.0f), 15),
+// };
 
 intersection intersect_scene(in ray r)
 {
@@ -244,7 +257,7 @@ vec3 trace()
             // There was an intersection: accumulate color and bounce.
             else 
             {
-            	const vec3 light_c = rainbow(inter.position.x * 0.1f + 0.1f) * 5.0f;
+            	const vec3 light_c = rainbow(inter.position.x * 0.1f + 0.8f) * 5.0f;
 
             	material mtl = materials[inter.material_index];
 
