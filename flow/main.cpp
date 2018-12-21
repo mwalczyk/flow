@@ -25,8 +25,7 @@ struct alignas(8) PushConstants
 	float frame_counter;
 	float resolution[2];
 	float mouse[4];
-	float l_mouse_down;
-	float r_mouse_down;
+	float mouse_down[2];
 	/* Add more members here: mind the struct alignment */
 };
 

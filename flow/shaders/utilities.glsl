@@ -5,7 +5,7 @@ const float one_over_two_pi = 1.0f / two_pi;
 
 const float gamma = 1.0f / 2.2f;
 const float anti_aliasing = 0.5f;
-const uint number_of_iterations = 4;
+const uint number_of_iterations = 1;
 const uint number_of_bounces = 10;
 const float epsilon = 0.001f;
 const float min_distance = 0.0f;
@@ -22,6 +22,11 @@ const vec3 red = { 1.0, 0.0, 0.0 };
 const vec3 green = { 0.0, 1.0, 0.0 };
 const vec3 blue = { 0.0, 0.0, 1.0 };
 const float _ignored = -1.0;
+
+float map(float v, float in_min, float in_max, float out_min, float out_max) 
+{
+  return out_min + (out_max - out_min) * (v - in_min) / (in_max - in_min);
+}
 
 float to_radians(float degrees)
 {
@@ -51,6 +56,50 @@ vec3 palette(in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d)
 vec3 rainbow(in float t)
 {
 	return palette(t, vec3(0.5f), vec3(0.5f), white, vec3(0.0f, 0.33f, 0.67f));
+}
+
+
+float mod289(float x) 
+{ 
+	return x - floor(x * (1.0 / 289.0)) * 289.0; 
+}
+
+vec4 mod289(in vec4 x) 
+{ 
+	return x - floor(x * (1.0 / 289.0)) * 289.0; 
+} 
+
+vec4 perm(in vec4 x) 
+{ 
+	return mod289(((x * 34.0) + 1.0) * x); 
+}
+
+float noise(in vec3 p)
+{
+	// From Morgan McGuire ("Graphics Codex")
+    vec3 a = floor(p);
+    vec3 d = p - a;
+    d = d * d * (3.0 - 2.0 * d);
+
+    vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);
+    vec4 k1 = perm(b.xyxy);
+    vec4 k2 = perm(k1.xyxy + b.zzww);
+
+    vec4 c = k2 + a.zzzz;
+    vec4 k3 = perm(c);
+    vec4 k4 = perm(c + 1.0);
+
+    vec4 o1 = fract(k3 * (1.0 / 41.0));
+    vec4 o2 = fract(k4 * (1.0 / 41.0));
+    vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);
+    vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
+
+    return o4.y * d.y + o4.x * (1.0 - d.y);
+}
+
+float rand(in vec2 seed)
+{
+    return fract(sin(dot(seed.xy, vec2(12.9898f, 78.233f))) * 43758.5453f);
 }
 
 float gpu_rnd(inout vec4 state) 

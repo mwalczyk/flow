@@ -16,71 +16,98 @@ layout(push_constant) uniform PushConstants
 	float frame_counter;
 	vec2 resolution;
 	vec4 cursor_position;
-	float l_mouse_down;
-	float r_mouse_down;
+	vec2 mouse_down;
 } push_constants;
 
 layout(location = 0) out vec4 o_color;
 
+// #define N_SPHERES 20
+// sphere[N_SPHERES] build_random_scene()
+// {
+// 	sphere spheres[N_SPHERES];
+// 	for (uint i = 0u; i < spheres.length(); ++i)
+// 	{
+// 		vec3 center = 
+// 		{ 
+// 			rand(vec2(i + 0)), 
+// 			rand(vec2(i + 1)), 
+// 			rand(vec2(i + 2))
+// 		};
+// 		float radius = rand(vec2(i, -i));
+// 		radius = map(radius, 0.0f, 1.0f, 0.3f, 0.6f);
+// 		center = center * 2.0f - 1.0f;
+// 		center.y -= 2.0f;
+// 		center *= 1.0f;
+// 		spheres[i] = sphere(radius, center, 1);
+// 	}
+// 	spheres[3].radius = 0.50f;
+// 	spheres[3].center = vec3( -2.00f, -2.70f,  3.00f);
+// 	spheres[3].material_index = 8;
+// 	return spheres;
+// }
+
 // Define the scene.
 material materials[] = 
 {
-	{ { 1.00f, 0.79f, 0.23f }, material_type_metallic, false }, 
-	{ { 0.90f, 0.10f, 0.20f }, material_type_dielectric, false },
-	{ { 0.97f, 1.00f, 0.97f }, material_type_diffuse, false }, 		// Off-white
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 0.50f, false }, 
+	{ { 0.90f, 0.10f, 0.20f }, material_type_dielectric, _ignored, false },
+	{ { 0.97f, 1.00f, 0.97f }, material_type_diffuse, _ignored, false }, 		// Off-white
 
-	{ { 1.00f, 0.35f, 0.37f }, material_type_diffuse, false }, 		// Pink
-    { { 0.54f, 0.79f, 0.15f }, material_type_diffuse, false }, 		// Mint
-    { { 0.10f, 0.51f, 0.77f }, material_type_diffuse, false }, 		// Dark mint
-	{ { 1.00f, 0.79f, 0.23f }, material_type_diffuse, false },		// Yellow
-	{ { 0.42f, 0.30f, 0.58f }, material_type_diffuse, false }, 		// Purple
+	{ { 1.00f, 0.35f, 0.37f }, material_type_diffuse, _ignored, false }, 		// Pink
+    { { 0.54f, 0.79f, 0.15f }, material_type_diffuse, _ignored, false }, 		// Mint
+    { { 0.10f, 0.51f, 0.77f }, material_type_diffuse, _ignored, false }, 		// Dark mint
+	{ { 1.00f, 0.79f, 0.23f }, material_type_diffuse, _ignored, false },		// Yellow
+	{ { 0.42f, 0.30f, 0.58f }, material_type_diffuse, _ignored, false }, 		// Purple
 
-	{ { 5.00f, 4.80f, 4.80f }, material_type_diffuse, true },  		// *Light
+	{ { 5.00f, 4.80f, 4.80f }, material_type_diffuse, _ignored, true },  		// *Light
 
-	{red, material_type_diffuse, false }, 
-	{ rainbow(0.1f), material_type_diffuse, false }, 
-	{ rainbow(0.2f), material_type_diffuse, false }, 
-	{ rainbow(0.3f), material_type_diffuse, false }, 
-	{ rainbow(0.4f), material_type_diffuse, false }, 
-	{ rainbow(0.5f), material_type_diffuse, false }, 
-	{ rainbow(0.6f), material_type_diffuse, false }, 
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 0.25f, false }, 
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 0.50f, false }, 
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 0.75f, false }, 
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 1.00f, false }, 
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 1.25f, false }, 
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 1.50f, false }, 
+	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 1.75f, false }, 
 };
 
 sphere spheres[] = 
 {
-	{ 0.55, vec3( -1.4, -0.55f, -1.3), 1 },
-	{ 0.75, vec3(  1.0, -0.75f, -1.6), 1 },
-	{ 1.50, vec3(  0.0, -1.50f,  0.0), 1 },
-	{ 0.90, vec3( -2.0, -2.70f,  3.0), 8 },
-	{ 0.30, vec3( -0.6, -0.30f, -1.8), 1 },
+	// Light source
+	{ 0.90f, vec3(-2.00f, -2.70f, 3.00f), 8 },
+
+	// Spheres in the middle
+	{ 1.50f, vec3( 0.00f, -1.50f,  0.00f), 1 },
+	{ 0.50f, vec3( 0.00f, -1.50f,  0.00f), 0 },
+	{ 0.55f, vec3(-1.40f, -0.55f, -1.30f), 9 },
+	{ 0.75f, vec3( 1.00f, -0.75f, -1.60f), 1 },
+	{ 0.30f, vec3(-0.60f, -0.30f, -1.80f), 1 },
+
+	// Line of spheres on the left
+	{ 0.30f, vec3(-3.00f, -0.30f, -2.00f),  9 },
+	{ 0.30f, vec3(-3.00f, -0.30f, -1.00f), 10 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  0.00f), 11 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  1.00f), 12 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  2.00f), 13 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  3.00f), 14 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  4.00f), 15 }
 };
 
 plane planes[] = 
 {
-	{ -z_axis,  z_axis * 5.5, 2 }, // Back
-	{  z_axis, -z_axis * 8.5, 2 }, // Front
-	{ -x_axis,  x_axis * 4.5, 2 }, // Left
-	{  x_axis, -x_axis * 4.5, 2 }, // Right
-	{  y_axis, -y_axis * 5.0, 2 }, // Top
-	{ -y_axis,  y_axis * 0.0, 2 }  // Bottom
+	{ -z_axis,  z_axis * 5.50f, 5 }, // Back
+	{  z_axis, -z_axis * 8.50f, 2 }, // Front
+	{ -x_axis,  x_axis * 4.50f, 7 }, // Right
+	{  x_axis, -x_axis * 4.50f, 4 }, // Left
+	{  y_axis, -y_axis * 5.00f, 2 }, // Top
+	{ -y_axis,  y_axis * 0.00f, 0 }  // Bottom
 };
 
 quad quads[] =
 {
-	build_quad(7.0f, 4.0f, vec3( 3.5f, -2.0f, 0.0f), to_radians( 90.0f), 5),
-	build_quad(7.0f, 1.0f, vec3(-3.5f, -2.0f, 0.0f), to_radians(-90.0f), 7)
+	build_quad(7.00f, 1.00f, vec3(3.00f, -0.60f, 0.00f), to_radians(90.0f),  9),
+	build_quad(7.00f, 1.00f, vec3(3.00f, -1.70f, 0.00f), to_radians(90.0f), 12),
+	build_quad(7.00f, 1.00f, vec3(3.00f, -2.80f, 0.00f), to_radians(90.0f), 15),
 };
-
-// quad quads[] =
-// {
-// 	build_quad(0.4f, 1.0f, vec3(-3.0f, -0.5f, -2.0f), to_radians(180.0f), 9),
-// 	build_quad(0.4f, 1.2f, vec3(-3.0f, -0.6f, -1.0f), to_radians(180.0f), 10),
-// 	build_quad(0.4f, 1.4f, vec3(-3.0f, -0.7f, 0.0f), to_radians(180.0f), 11),
-// 	build_quad(0.4f, 1.6f, vec3(-3.0f, -0.8f, 1.0f), to_radians(180.0f), 12),
-// 	build_quad(0.4f, 1.8f, vec3(-3.0f, -0.9f, 2.0f), to_radians(180.0f), 13),
-// 	build_quad(0.4f, 2.0f, vec3(-3.0f, -1.0f, 3.0f), to_radians(180.0f), 14),
-// 	build_quad(0.4f, 2.2f, vec3(-3.0f, -1.1f, 4.0f), to_radians(180.0f), 15),
-// };
 
 intersection intersect_scene(in ray r)
 {
@@ -171,9 +198,10 @@ intersection intersect_scene(in ray r)
 	return inter;
 }
 
-vec3 scatter(in material mtl, in intersection inter, float rand_a, float rand_b)
+vec3 scatter(in material mtl, in intersection inter)
 {
-	// Return the new ray direction
+	// TODO: return the new ray direction
+	// ...
 
 	return vec3(0.0f);
 }
@@ -196,7 +224,7 @@ ray get_ray(inout vec4 seed, in vec2 uv)
 	const float half_width = aspect_ratio * half_height;
 
 	const mat3 look_at = lookat(camera_position, origin + vec3(0.0f, -1.25f, 0.0f));
-	const float dist_to_focus = push_constants.cursor_position.w * 5.0f + 5.0f; //length(camera_position);
+	const float dist_to_focus = map(push_constants.cursor_position.w, 0.0f, 1.0f, 10.0f, 5.0f);
 
 	const vec3 lower_left_corner = camera_position - look_at * vec3(half_width, half_height, 1.0f) * dist_to_focus;
 	const vec3 horizontal = 2.0f * half_width * dist_to_focus * look_at[0];
@@ -242,7 +270,7 @@ vec3 trace()
 
 		// For explicit light sampling (next event estimation), we need to keep track of the 
 		// previous material that was hit, as explained below.
-		int prev_material_type = 0;
+		int previous_material_type = 0;
 
 		// This is the main path tracing loop.
 		for (uint j = 0; j < number_of_bounces; ++j)
@@ -257,11 +285,12 @@ vec3 trace()
             // There was an intersection: accumulate color and bounce.
             else 
             {
-            	const vec3 light_c = rainbow(inter.position.x * 0.1f + 0.8f) * 5.0f;
-
             	material mtl = materials[inter.material_index];
 
                 const vec3 hit_location = r.origin + r.direction * inter.t;
+                const float m = 0.3f; 
+                const float o = 0.6f;
+                const float s = 10.0f;
 
                 // When using explicit light sampling, we have to account for a number of edge cases:
                 //
@@ -271,11 +300,13 @@ vec3 trace()
                 //    metal or dielectric), we need to add its color (otherwise, lights would appear
                 //    black in mirror-like objects).
                 if ((j == 0 || 
-                    prev_material_type == material_type_dielectric || 
-                    prev_material_type == material_type_metallic) && 
+                    previous_material_type == material_type_dielectric || 
+                    previous_material_type == material_type_metallic) && 
                     mtl.is_light) 
                 {
-                    radiance += throughput * light_c;//mtl.reflectance;
+                	const vec3 light_color = rainbow(floor((hit_location.x * m + o) * s) / s);
+
+                    radiance += throughput * light_color;//mtl.reflectance;
                     break;   
                 }
             
@@ -293,7 +324,7 @@ vec3 trace()
                     // ...
 
                     float cos_a_max = 0.0f;
-                    const vec3 to_light = sample_sphere_light(seed, cos_a_max, spheres[3].center, spheres[3].radius, r.origin);
+                    const vec3 to_light = sample_sphere_light(seed, cos_a_max, spheres[0].center, spheres[0].radius, r.origin);
 
                     // Items resulting from the shadow ray.
                     const ray secondary_r = { r.origin, to_light };
@@ -309,12 +340,14 @@ vec3 trace()
 
                         const float pdf = max(0.0f, dot(to_light, normal_towards_light)) * omega * one_over_pi;
 
-                        radiance += throughput * light_c * pdf;//secondary_mtl.reflectance * pdf; 
+                        const vec3 light_color = rainbow(floor((secondary_inter.position.x * m + o) * s) / s) * 5.0f;
+
+                        radiance += throughput * light_color * pdf;//secondary_mtl.reflectance * pdf; 
                     }
 
                     r.direction = normalize(cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)));
 
-                    // Accumulate material color
+                    // Accumulate the material color.
                     const float cos_theta = max(0.0f, dot(inter.normal, r.direction));
                     const float pdf = one_over_two_pi;
                     const vec3 brdf = mtl.reflectance * one_over_pi;
@@ -323,8 +356,7 @@ vec3 trace()
                 }
                 else if (mtl.type == material_type_metallic)
                 {
-                    const float roughness = 0.25f;
-                    const vec3 offset = cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)) * roughness;
+                    const vec3 offset = cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)) * mtl.roughness;
                     
                     r.direction = normalize(reflect(r.direction, inter.normal) + offset);
                     
@@ -378,16 +410,16 @@ vec3 trace()
                     // ...
                 }
 
-                prev_material_type = mtl.type;
+                previous_material_type = mtl.type;
 #ifdef RUSSIAN_ROULETTE
                 // See: https://computergraphics.stackexchange.com/questions/2316/is-russian-roulette-really-the-answer
                 //
-                // Bright objects (higher throughput) encourage more bounces
+                // Bright objects (higher throughput) encourage more bounces.
                 const float probality_of_termination = max3(throughput);
 
                 if (gpu_rnd(seed) > probality_of_termination) break;
 
-                // Make sure the final render is unbiased
+                // Make sure the final render is unbiased.
                 throughput *= 1.0f / probality_of_termination;
 #endif
             }
@@ -411,7 +443,7 @@ void main()
 	vec3 prev_frame = texture(u_image, uv).rgb;
 	vec3 curr_frame = trace_color;
 
-	if (push_constants.l_mouse_down == 1.0f || push_constants.r_mouse_down == 1.0f)
+	if (any(bvec2(push_constants.mouse_down)))
 	{
 		o_color = vec4(curr_frame, 1.0f);
 	}

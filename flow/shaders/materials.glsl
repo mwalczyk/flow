@@ -7,10 +7,12 @@ const int material_type_dielectric = 2;
 //
 // 1. The primary color (albedo)
 // 2. An integer denoting the type of the material (diffuse, metallic, etc.)
-// 3. A flag indicating whether or not this material belongs to a light source
+// 3. The material roughness (only used for metals)
+// 4. A flag indicating whether or not this material belongs to a light source
 struct material 
 {
 	vec3 reflectance;
 	int type;
+	float roughness;
 	bool is_light;
 };
