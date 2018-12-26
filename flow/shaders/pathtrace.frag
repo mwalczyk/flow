@@ -21,36 +21,11 @@ layout(push_constant) uniform PushConstants
 
 layout(location = 0) out vec4 o_color;
 
-// #define N_SPHERES 20
-// sphere[N_SPHERES] build_random_scene()
-// {
-// 	sphere spheres[N_SPHERES];
-// 	for (uint i = 0u; i < spheres.length(); ++i)
-// 	{
-// 		vec3 center = 
-// 		{ 
-// 			rand(vec2(i + 0)), 
-// 			rand(vec2(i + 1)), 
-// 			rand(vec2(i + 2))
-// 		};
-// 		float radius = rand(vec2(i, -i));
-// 		radius = map(radius, 0.0f, 1.0f, 0.3f, 0.6f);
-// 		center = center * 2.0f - 1.0f;
-// 		center.y -= 2.0f;
-// 		center *= 1.0f;
-// 		spheres[i] = sphere(radius, center, 1);
-// 	}
-// 	spheres[3].radius = 0.50f;
-// 	spheres[3].center = vec3( -2.00f, -2.70f,  3.00f);
-// 	spheres[3].material_index = 8;
-// 	return spheres;
-// }
-
 // Define the scene.
 material materials[] = 
 {
-	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 0.50f, false }, 
-	{ { 0.90f, 0.10f, 0.20f }, material_type_dielectric, _ignored, false },
+	{ { 0.9f, 0.9f, 0.9f }, material_type_metallic, 0.50f, false }, 
+	{ { 0.90f, 0.10f, 0.20f }, material_type_dielectric, 1.0f / 2.31f, false },
 	{ { 0.97f, 1.00f, 0.97f }, material_type_diffuse, _ignored, false }, 		// Off-white
 
 	{ { 1.00f, 0.35f, 0.37f }, material_type_diffuse, _ignored, false }, 		// Pink
@@ -68,45 +43,101 @@ material materials[] =
 	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 1.25f, false }, 
 	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 1.50f, false }, 
 	{ { 1.00f, 0.98f, 0.98f }, material_type_metallic, 1.75f, false }, 
+
+	{ { 0.90f, 0.10f, 0.20f }, material_type_dielectric, 1.0f / 1.31f, false },
+
+	{ { 0.3f, 0.3f, 0.3f }, material_type_metallic, 0.50f, false },
 };
 
 sphere spheres[] = 
 {
-	// Light source
-	{ 0.90f, vec3(-2.00f, -2.70f, 3.00f), 8 },
+	// Light source 
+	{ 0.75f, vec3( -2.00f, -4.00f,  0.00f), 8 },
+	// old: { 1.00f, vec3( 0.00f, -4.50f,  3.00f), 8 },
 
 	// Spheres in the middle
-	{ 1.50f, vec3( 0.00f, -1.50f,  0.00f), 1 },
-	{ 0.50f, vec3( 0.00f, -1.50f,  0.00f), 0 },
-	{ 0.55f, vec3(-1.40f, -0.55f, -1.30f), 9 },
-	{ 0.75f, vec3( 1.00f, -0.75f, -1.60f), 1 },
-	{ 0.30f, vec3(-0.60f, -0.30f, -1.80f), 1 },
+	{ 1.500f, vec3( 0.00f, -1.500f,  0.000f), 1 },
+	{ 0.750f, vec3( 0.00f, -0.750f, -2.250f), 1 },
+    { 0.375f, vec3( 0.00f, -0.375f, -3.375f), 1 },
+	{ 0.100f, vec3( 0.00f, -0.100f, -3.850f), 1 },
 
-	// Line of spheres on the left
-	{ 0.30f, vec3(-3.00f, -0.30f, -2.00f),  9 },
-	{ 0.30f, vec3(-3.00f, -0.30f, -1.00f), 10 },
-	{ 0.30f, vec3(-3.00f, -0.30f,  0.00f), 11 },
-	{ 0.30f, vec3(-3.00f, -0.30f,  1.00f), 12 },
-	{ 0.30f, vec3(-3.00f, -0.30f,  2.00f), 13 },
-	{ 0.30f, vec3(-3.00f, -0.30f,  3.00f), 14 },
-	{ 0.30f, vec3(-3.00f, -0.30f,  4.00f), 15 }
+	// { 0.30f, vec3(-0.60f, -0.30f, -1.80f), 1 },
+
+	// // Line of spheres on the left
+	// { 0.30f, vec3(-3.00f, -0.30f, -2.00f),  9 },
+	// { 0.30f, vec3(-3.00f, -0.30f, -1.00f), 10 },
+	// { 0.30f, vec3(-3.00f, -0.30f,  0.00f), 11 },
+	// { 0.30f, vec3(-3.00f, -0.30f,  1.00f), 12 },
+	// { 0.30f, vec3(-3.00f, -0.30f,  2.00f), 13 },
+	// { 0.30f, vec3(-3.00f, -0.30f,  3.00f), 14 },
+	// { 0.30f, vec3(-3.00f, -0.30f,  4.00f), 15 }
 };
 
 plane planes[] = 
 {
+	// Monochrome
+	// { -z_axis,  z_axis * 5.50f, 2 }, // Back
+	// {  z_axis, -z_axis * 8.50f, 2 }, // Front
+	// { -x_axis,  x_axis * 4.50f, 2 }, // Right
+	// {  x_axis, -x_axis * 6.50f, 2 }, // Left
+	// {  y_axis, -y_axis * 7.00f, 2 }, // Top
+	// { -y_axis,  y_axis * 0.00f, 2 }  // Bottom
+
+	// Colored
 	{ -z_axis,  z_axis * 5.50f, 5 }, // Back
 	{  z_axis, -z_axis * 8.50f, 2 }, // Front
 	{ -x_axis,  x_axis * 4.50f, 7 }, // Right
 	{  x_axis, -x_axis * 4.50f, 4 }, // Left
-	{  y_axis, -y_axis * 5.00f, 2 }, // Top
-	{ -y_axis,  y_axis * 0.00f, 0 }  // Bottom
+	{  y_axis, -y_axis * 7.00f, 2 }, // Top
+	{ -y_axis,  y_axis * 0.00f, 2 }  // Bottom
 };
 
 quad quads[] =
 {
-	build_quad(7.00f, 1.00f, vec3(3.00f, -0.60f, 0.00f), to_radians(90.0f),  9),
-	build_quad(7.00f, 1.00f, vec3(3.00f, -1.70f, 0.00f), to_radians(90.0f), 12),
-	build_quad(7.00f, 1.00f, vec3(3.00f, -2.80f, 0.00f), to_radians(90.0f), 15),
+	build_quad(7.00f, 1.00f, vec3(3.00f, -0.60f, 0.00f), y_axis, to_radians(90.0f),  9),
+	build_quad(7.00f, 1.00f, vec3(3.00f, -1.70f, 0.00f), y_axis, to_radians(90.0f), 12),
+	build_quad(7.00f, 1.00f, vec3(3.00f, -2.80f, 0.00f), y_axis, to_radians(90.0f), 15),
+};
+
+#define N 27
+box[N] build_random_scene()
+{
+	box boxes[N];
+
+	int i = 0;
+	int cube_rt = 3;
+
+	for (uint x = 0u; x < cube_rt; ++x)
+	{
+		for (uint y = 0u; y < cube_rt; ++y)
+		{
+			for (uint z = 0u; z < cube_rt; ++z)
+			{
+				if (x == 1 && y == 1 && z == 1) continue;
+
+				float pct_x = (x) / float(cube_rt - 1.0f);
+				float pct_y = (y) / float(cube_rt - 1.0f);
+				float pct_z = (z) / float(cube_rt - 1.0f);
+
+				const vec3 box_size = vec3(1.0f);
+				const float cluster_size = 3.0f;
+				const vec3 center = vec3(pct_x, pct_y, pct_z) * cluster_size - cluster_size * 0.5f;
+
+				boxes[i] = build_box(box_size, center - y_axis * 2.0f, 17);
+
+				i++;
+			}
+		}
+
+	}
+	
+	return boxes;
+}
+
+// Remember: negative y is up, positive z is forward
+box boxes[] =
+{
+	build_box(vec3(1.0f), -y_axis * 1.5f, 17)
 };
 
 intersection intersect_scene(in ray r)
@@ -171,7 +202,8 @@ intersection intersect_scene(in ray r)
 		} 
 	}
 
-	// then quads:
+	// // then quads:
+#ifdef QUADS
 	for(uint i = 0u; i < quads.length(); ++i)
 	{	
 		// Did the ray intersect this object?
@@ -194,6 +226,64 @@ intersection intersect_scene(in ray r)
 			}
 		} 
 	}
+#endif
+
+	// finally, boxes:
+#ifdef BOXES
+	for(uint i = 0u; i < boxes.length(); ++i)
+	{	
+		// Did the ray intersect this object?
+		float temp_t;
+		if (intersect_box(boxes[i], r, temp_t))
+		{
+			// Was the intersection closer than any previous one?
+			if (temp_t < inter.t)
+			{
+				inter.material_index = boxes[i].material_index;
+				inter.object_type = object_type_box;
+				inter.object_index = int(i);
+				inter.position = r.origin + r.direction * temp_t;
+
+				vec3 normal;
+				{
+					vec3 center = (boxes[i].bounds[0] + boxes[i].bounds[1]) * 0.5f; 
+					vec3 size = abs(boxes[i].bounds[1] - boxes[i].bounds[0]);
+					vec3 local_point = inter.position - center;
+					float min = 10000.0f;
+
+					// Find which face is the closest to the point of 
+					// intersection (x, y, or z).
+					float dist = abs(size.x - abs(local_point.x));
+					if (dist < min)
+					{
+						min = dist;
+						normal = x_axis;
+						normal *= sign(local_point.x);
+					}
+
+					dist = abs(size.y - abs(local_point.y));
+					if (dist < min)
+					{
+						min = dist;
+						normal = y_axis;
+						normal *= sign(local_point.y);
+					}
+
+					dist = abs(size.z - abs(local_point.z));
+					if (dist < min)
+					{
+						min = dist;
+						normal = z_axis;
+						normal *= sign(local_point.z);
+					}
+				}
+				
+				inter.normal = normalize(normal);
+				inter.t = temp_t;
+			}
+		} 
+	}
+#endif
 
 	return inter;
 }
@@ -257,6 +347,7 @@ vec3 trace()
 	
 	vec3 final = black;
 	const vec3 sky = black;
+	const bool debug = false;
 
 	for (uint i = 0; i < number_of_iterations; ++i)
 	{
@@ -289,8 +380,8 @@ vec3 trace()
 
                 const vec3 hit_location = r.origin + r.direction * inter.t;
                 const float m = 0.3f; 
-                const float o = 0.6f;
-                const float s = 10.0f;
+                const float o = 0.8f;
+                const float s = 20.0f;
 
                 // When using explicit light sampling, we have to account for a number of edge cases:
                 //
@@ -304,16 +395,23 @@ vec3 trace()
                     previous_material_type == material_type_metallic) && 
                     mtl.is_light) 
                 {
-                	const vec3 light_color = rainbow(floor((hit_location.x * m + o) * s) / s);
+                	const vec3 light_color = white;//rainbow(hit_location.x * m + o);
+                	// rainbow(floor((hit_location.x * m + o) * s) / s);
 
                     radiance += throughput * light_color;//mtl.reflectance;
                     break;   
                 }
+
+                if (debug)
+                {
+	                radiance += inter.normal * 0.5 + 0.5;
+	                break;
+         	    }
             
                 // Set the new ray origin.
                 r.origin = hit_location + inter.normal * epsilon;
 
-                // Choose a new ray direction based on the material type.
+                // Choose a new ray direction based on the material type. 
                 if (mtl.type == material_type_diffuse)
                 {
 
@@ -340,7 +438,8 @@ vec3 trace()
 
                         const float pdf = max(0.0f, dot(to_light, normal_towards_light)) * omega * one_over_pi;
 
-                        const vec3 light_color = rainbow(floor((secondary_inter.position.x * m + o) * s) / s) * 5.0f;
+                        const vec3 light_color = white * 5.0f;
+                        //rainbow(floor((secondary_inter.position.x * m + o) * s) / s) * 5.0f;
 
                         radiance += throughput * light_color * pdf;//secondary_mtl.reflectance * pdf; 
                     }
@@ -370,7 +469,7 @@ vec3 trace()
                     //
                     // where n is the "outer" medium and n' is the "inner" (i.e. the medium
                     // that the ray is traveling into)
-                    const float ior = 1.0f / 1.91f;
+                    const float ior = mtl.roughness;// 1.0f / 1.91f;
 
                     const vec3 normal = inter.normal;
 
@@ -425,7 +524,7 @@ vec3 trace()
             }
 		}
 #ifdef CLAMP_FIREFLIES
-		radiance = clamp(vec3(0.0f), vec3(3.0f), radiance);
+		radiance = clamp(vec3(0.0f), vec3(1.0f), radiance);
 #endif
 		final += radiance; 
 	}

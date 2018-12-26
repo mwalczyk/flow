@@ -109,8 +109,40 @@ bool intersect_plane(in plane pln, in ray r, out float t)
 
 bool intersect_box(in box bx, in ray r, out float t)
 {
-	// TODO
-	return false;
+	// See: https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection
+	// and: http://blog.johnnovak.net/2016/10/22/the-nim-raytracer-project-part-4-calculating-box-normals/
+	// and: https://gamedev.stackexchange.com/questions/18436/most-efficient-aabb-vs-ray-collision-algorithms
+	const vec3  inv_direction = 1.0f / r.direction;
+
+	// `bounds[0]` is the corner of the AABB with minimal coordinates - left bottom
+	// `bounds[1]` is the corner of the AABB with maximal coordinates - right top
+	const float t1 = (bx.bounds[0].x - r.origin.x) * inv_direction.x;
+	const float t2 = (bx.bounds[1].x - r.origin.x) * inv_direction.x;
+	const float t3 = (bx.bounds[0].y - r.origin.y) * inv_direction.y;
+	const float t4 = (bx.bounds[1].y - r.origin.y) * inv_direction.y;
+	const float t5 = (bx.bounds[0].z - r.origin.z) * inv_direction.z;
+	const float t6 = (bx.bounds[1].z - r.origin.z) * inv_direction.z;
+
+	const float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6));
+	const float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6));
+
+	// The ray intersects the AABB, but it is behind us.
+	if (tmax < 0)
+	{
+	    t = tmax;
+	    return false;
+	}
+
+	// The ray doesn't intersect AABB.
+	if (tmin > tmax)
+	{
+	    t = tmax;
+	    return false;
+	}
+
+	t = tmin;
+
+	return true;
 }
 
 bool intersect_quad(in quad q, in ray r, out float t)
