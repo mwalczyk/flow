@@ -28,7 +28,7 @@ material materials[] =
 	{ { 0.90f, 0.10f, 0.20f }, material_type_dielectric, 1.0f / 2.31f, false },
 	{ { 0.97f, 1.00f, 0.97f }, material_type_diffuse, _ignored, false }, 		// Off-white
 
-	{ { 1.00f, 0.35f, 0.37f }, material_type_diffuse, _ignored, false }, 		// Pink
+	{ { 1.00f, 0.00f, 0.00f }, material_type_diffuse, _ignored, false }, 		// Pink
     { { 0.54f, 0.79f, 0.15f }, material_type_diffuse, _ignored, false }, 		// Mint
     { { 0.10f, 0.51f, 0.77f }, material_type_diffuse, _ignored, false }, 		// Dark mint
 	{ { 1.00f, 0.79f, 0.23f }, material_type_diffuse, _ignored, false },		// Yellow
@@ -57,39 +57,39 @@ sphere spheres[] =
 
 	// Spheres in the middle
 	{ 1.500f, vec3( 0.00f, -1.500f,  0.000f), 1 },
-	{ 0.750f, vec3( 0.00f, -0.750f, -2.250f), 1 },
-    { 0.375f, vec3( 0.00f, -0.375f, -3.375f), 1 },
-	{ 0.100f, vec3( 0.00f, -0.100f, -3.850f), 1 },
+	{ 0.750f, vec3( 0.00f, -0.750f, -2.250f), 4 },
+    { 0.375f, vec3( 0.00f, -0.375f, -3.375f), 5 },
+	{ 0.100f, vec3( 0.00f, -0.100f, -3.850f), 6 },
 
 	// { 0.30f, vec3(-0.60f, -0.30f, -1.80f), 1 },
 
 	// // Line of spheres on the left
-	// { 0.30f, vec3(-3.00f, -0.30f, -2.00f),  9 },
-	// { 0.30f, vec3(-3.00f, -0.30f, -1.00f), 10 },
-	// { 0.30f, vec3(-3.00f, -0.30f,  0.00f), 11 },
-	// { 0.30f, vec3(-3.00f, -0.30f,  1.00f), 12 },
-	// { 0.30f, vec3(-3.00f, -0.30f,  2.00f), 13 },
-	// { 0.30f, vec3(-3.00f, -0.30f,  3.00f), 14 },
-	// { 0.30f, vec3(-3.00f, -0.30f,  4.00f), 15 }
+	{ 0.30f, vec3(-3.00f, -0.30f, -2.00f),  9 },
+	{ 0.30f, vec3(-3.00f, -0.30f, -1.00f), 10 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  0.00f), 11 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  1.00f), 12 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  2.00f), 13 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  3.00f), 14 },
+	{ 0.30f, vec3(-3.00f, -0.30f,  4.00f), 15 }
 };
 
 plane planes[] = 
 {
 	// Monochrome
-	// { -z_axis,  z_axis * 5.50f, 2 }, // Back
-	// {  z_axis, -z_axis * 8.50f, 2 }, // Front
-	// { -x_axis,  x_axis * 4.50f, 2 }, // Right
-	// {  x_axis, -x_axis * 6.50f, 2 }, // Left
-	// {  y_axis, -y_axis * 7.00f, 2 }, // Top
-	// { -y_axis,  y_axis * 0.00f, 2 }  // Bottom
+	{ -z_axis,  z_axis * 5.50f, 4 }, // Back
+	{  z_axis, -z_axis * 8.50f, 2 }, // Front
+	{ -x_axis,  x_axis * 4.50f, 3 }, // Right
+	{  x_axis, -x_axis * 6.50f, 6 }, // Left
+	{  y_axis, -y_axis * 7.00f, 2 }, // Top
+	{ -y_axis,  y_axis * 0.00f, 15 }  // Bottom
 
 	// Colored
-	{ -z_axis,  z_axis * 5.50f, 5 }, // Back
-	{  z_axis, -z_axis * 8.50f, 2 }, // Front
-	{ -x_axis,  x_axis * 4.50f, 7 }, // Right
-	{  x_axis, -x_axis * 4.50f, 4 }, // Left
-	{  y_axis, -y_axis * 7.00f, 2 }, // Top
-	{ -y_axis,  y_axis * 0.00f, 2 }  // Bottom
+	// { -z_axis,  z_axis * 5.50f, 5 }, // Back
+	// {  z_axis, -z_axis * 8.50f, 2 }, // Front
+	// { -x_axis,  x_axis * 4.50f, 7 }, // Right
+	// {  x_axis, -x_axis * 4.50f, 4 }, // Left
+	// {  y_axis, -y_axis * 7.00f, 2 }, // Top
+	// { -y_axis,  y_axis * 0.00f, 2 }  // Bottom
 };
 
 quad quads[] =
@@ -137,8 +137,10 @@ box[N] build_random_scene()
 // Remember: negative y is up, positive z is forward
 box boxes[] =
 {
-	build_box(vec3(1.0f), -y_axis * 1.5f, 17)
+	build_box(vec3(2.0f, 4.0f, 2.0f), -y_axis * 2.0f, 3)
 };
+
+//#define BOXES
 
 intersection intersect_scene(in ray r)
 {
