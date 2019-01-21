@@ -1,9 +1,6 @@
 # flow
 🔮 A GPU-based progressive path tracer written in Vulkan. 
 
-<p>
-  <img src="https://github.com/mwalczyk/flow/blob/master/screenshots/screenshot.png" alt="screenshot" width="300" height="auto"/>
-</p>
 
 ## Description
 For the time being, `flow` uses a single render pass instance with two distinct subpasses. The first subpass involves two floating-point images in a "ping-pong" arrangement. This is how the light accumulates over the course of many frames, leading to a well-converged image. Whichever of the two images was used as a color attachment during this first subpass serves as an input attachment to the next (and final) subpass. Input attachments are unique to Vulkan and allow a render pass attachment to be read in a fragment shader stage during a subpass. Input attachments come with several restrictions and do not support random access like a typical `sampler2D`, for example.
@@ -15,8 +12,8 @@ As such, there are two separate graphics pipelines - one that runs the main path
 Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
 ## Tested On
-- Windows 8.1, Windows 10
-- NVIDIA GeForce GTX 970M, NVIDIA GeForce GTX 980
+- Windows 8.1, Windows 10, Windows 7
+- NVIDIA GeForce GTX 1050ti
 - Vulkan SDK `1.1.70.1`
 - Visual Studio 2015.
 
@@ -43,7 +40,7 @@ ObjectDestroy<NoParent> deleter( allocator );
 - [ ] Tone mapping and exposure adjustment
 - [ ] Explicit light sampling 
 - [ ] Russian roulette path termination
-- [ ] Reflective materials (dielectrics)
+- [x] Reflective materials (dielectrics)
 - [ ] Improved BRDFs (GGX, Cook-Torrance, etc.)
 - [ ] Spatial acceleration data structures (most likely some form of GPU KD-tree)
 - [ ] Scene format (`.json`) and parser
@@ -51,7 +48,7 @@ ObjectDestroy<NoParent> deleter( allocator );
 
 ### License
 
-:copyright: The Interaction Department 2018
+:copyright: The Interaction Department, tigrazone 2018
 
 [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/)
 
