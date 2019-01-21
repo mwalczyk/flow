@@ -48,6 +48,7 @@ struct alignas(8) PushConstants
 	float time;
 	float frame_counter;
 	float resolution[2];
+	float resolution1[2];
 	float mouse[2];
 	float mouse_down;
 	/* Add more members here: mind the struct alignment */
@@ -209,6 +210,16 @@ public:
 		clear_ping_pong_images();
 	}
 
+	
+	void to_offline()
+	{
+		/*
+		
+			vkDestroyBuffer(device, vertexBuffer, nullptr);
+	
+		*/
+	}
+
 	void setup()
 	{
 		// General setup 
@@ -228,6 +239,10 @@ public:
 		// Per-frame resources
 		initialize_framebuffers();
 		initialize_command_pool();
+
+		//tigra: Create a new function createVertexBuffer and call it from initVulkan right before createCommandBuffers
+		initialize_buffers();
+		
 		initialize_command_buffers();
 		initialize_synchronization_primitives();
 		clear_ping_pong_images();
@@ -653,6 +668,25 @@ LOG_DEBUG("Created graphics pipelines");
 		});
 	}
 
+	void initialize_buffers()
+	{
+		/*
+		
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create vertex buffer!");
+    }
+	
+		*/
+		
+		LOG_DEBUG("*** Allocated buffers");
+	}
+
 	void initialize_command_buffers()
 	{
 		// We only need one command buffer per pair of framebuffers (AB - BA), thus we divide the length of `ping_pong_framebuffers` by 2
@@ -696,6 +730,8 @@ LOG_DEBUG("Created graphics pipelines");
 			static_cast<float>(samples_per_pixel),
 			static_cast<float>(width),
 			static_cast<float>(height),
+			1.0f/static_cast<float>(width),
+			1.0f/static_cast<float>(height),
 			cursor_position[0],
 			cursor_position[1],
 			mouse_down

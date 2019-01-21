@@ -4,9 +4,9 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 # Custom
-build/
 third_party/
 flow/*.spv
+.vs/*
 
 # User-specific files
 *.suo

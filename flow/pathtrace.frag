@@ -9,6 +9,7 @@ layout(push_constant) uniform PushConstants
 	float time;
 	float frame_counter;
 	vec2 resolution;
+	vec2 resolution1;
 	vec2 cursor_position;
 	float mouse_down;
 } push_constants;
@@ -26,6 +27,7 @@ layout(location = 0) out vec4 o_color;
 #define PI1 0.31830988618379067153776752674503
 #define PI180 0.01745329251994329576923690768489
 #define gamma 0.45454545454545454545454545454545
+#define EXPERIMENTAL 1
 
 /*
 const float pi = 3.1415926535897932384626433832795;
@@ -35,11 +37,21 @@ const float PI180 = pi / 180.0;
 const float gamma = 1.0 / 2.2;
 */
 
+/*
 const float anti_aliasing = 0.55;
 const uint number_of_iterations = 1;
 const uint number_of_bounces = 4;
 const float epsilon = 0.001;
 const float max_distance = 10000.0;
+*/
+
+#define anti_aliasing 0.55
+#define number_of_iterations 1
+#define number_of_bounces 4
+#define epsilon 0.001
+#define max_distance 10000.0
+
+
 
 
 
@@ -52,12 +64,15 @@ const vec3 x_axis = { 1.0, 0.0, 0.0 };
 const vec3 y_axis = { 0.0, 1.0, 0.0 };
 const vec3 z_axis = { 0.0, 0.0, 1.0 };
 const vec3 origin = { 0.0, 0.0, 0.0 };
+
 const vec3 miss = { -1.0, -1.0, -1.0 };
+
 const vec3 black = { 0.0, 0.0, 0.0 };
 const vec3 white = { 1.0, 1.0, 1.0 };
 const vec3 red = { 1.0, 0.0, 0.0 };
 const vec3 green = { 0.0, 1.0, 0.0 };
 const vec3 blue = { 0.0, 0.0, 1.0 };
+
 const float _ignored = -1.0;
 
 /****************************************************************************************************
@@ -66,16 +81,32 @@ const float _ignored = -1.0;
  *
  ***************************************************************************************************/
 const int material_type_invalid = -1;
+
+/*
 const int material_type_diffuse = 0;
 const int material_type_metallic = 1;	// <= mirror
 const int material_type_dielectric = 2;	// <= glass
 const int material_type_emissive = 3;
+const int material_type_mattetranslucent = 4;
+const int material_type_glossytranslucent = 5;
+*/
+
+//compare лучше с числом, а не константой
+#define material_type_diffuse 			0
+#define material_type_metallic 			1	// <= mirror
+#define material_type_dielectric		2	// <= glass
+#define material_type_emissive			3
+#define material_type_mattetranslucent	4
+#define material_type_glossytranslucent	5
 
 struct material 
 {
 	// The primary color of a Lambertian material: must be divided by π so that it 
 	// integrates to 1, as explained here: https://seblagarde.wordpress.com/tag/lambertian-surface/
 	vec3 reflectance;
+	
+	float params[2]; //dielectric - ior; glossytranslucent - transparency, exponent; mattetranslucent - transparency
+	float sigmaA, sigmaS;
 
 	// An integer denoting the type of the material (diffuse, metallic, etc.).
 	int type;
@@ -83,15 +114,16 @@ struct material
 
 material materials[] = 
 {
-	{ { 0.90, 0.80, 0.10 }, material_type_metallic }, 
-	{ { 0.90, 0.10, 0.20 }, material_type_diffuse },
-	{ { 0.968, 1.000, 0.968 }, material_type_diffuse }, // Off-white
+	{ { 0.90, 0.80, 0.10 },{0, 0}, 0, 0, material_type_metallic }, 
+	{ { 0.90, 0.10, 0.20 },{0, 0}, 0, 0, material_type_dielectric },
+	//{ { 0.968, 1.000, 0.968 },{0, 0}, 0, 0, material_type_dielectric }, // Off-white
+	{ { 0.968, 1.000, 0.968 },{0, 0}, 0, 0, material_type_dielectric }, // Off-white
 
-	{ vec3(1.0, 0.35, 0.37), material_type_diffuse }, // Pink
-    { vec3(0.54, 0.79, 0.15), material_type_diffuse }, // Mint
-    { vec3(0.1, 0.51, 0.77), material_type_diffuse }, // Dark mint
-	{ vec3(1.0, 0.79, 0.23), material_type_diffuse },	// Yellow
-	{ vec3(0.42, 0.3, 0.58), material_type_diffuse }, // Purple
+	{ vec3(1.0, 0.35, 0.37),{0, 0}, 0, 0, material_type_diffuse }, // Pink
+    { vec3(0.54, 0.79, 0.15),{0, 0}, 0, 0, material_type_diffuse }, // Mint
+    { vec3(0.1, 0.51, 0.77),{0, 0}, 0, 0, material_type_diffuse }, // Dark mint
+	{ vec3(1.0, 0.79, 0.23),{0, 0}, 0, 0, material_type_diffuse },	// Yellow
+	{ vec3(0.42, 0.3, 0.58),{0, 0}, 0, 0, material_type_diffuse }, // Purple
 };
 
 /****************************************************************************************************
@@ -151,7 +183,7 @@ plane planes[] =
 	{ -x_axis,  x_axis * 4.5, 3 }, // Left
 	{  x_axis, -x_axis * 4.5, 4 }, // Right
 	{  y_axis, -y_axis * 4.5, 7 }, // Top
-	{ -y_axis,  y_axis * 1.0, 2 }  // Bottom
+	{ -y_axis,  y_axis * 1.0, 5 }  // Bottom
 };
 
 area_light scene_light = 
@@ -261,9 +293,11 @@ vec3 cos_weighted_hemisphere(in vec3 normal, float rand_phi, float rand_radius)
 	// the hemisphere. This generates the cosine-weighted distribution
 	// that we are after.
 	float radius = sqrt(rand_radius);
+	/*
 	float sample_x = radius * cos(PI2 * rand_phi); 
 	float sample_y = radius * sin(PI2 * rand_phi);
 	float sample_z = sqrt(1.0 - rand_radius);
+	*/
 
     // In order to transform the sample from the world coordinate system
  	// to the local coordinate system around the surface normal, we need 
@@ -325,11 +359,20 @@ vec3 cos_weighted_hemisphere(in vec3 normal, float rand_phi, float rand_radius)
 		w = vec3(b, 1.0 - normal.y * normal.y * a, -normal.y);
 	}
 	
+	/*
 	vec3 local_sample = vec3(sample_x * u + sample_y * w + sample_z * normal);
 	
     return 
 	//normalize
 	(local_sample);
+	*/
+	
+	//return vec3(sample_x * u + sample_y * w + sample_z * normal);
+	return vec3(
+		(radius * cos(rand_phi))* u + 
+		(radius * sin(rand_phi))* w + 
+		(sqrt(1.0 - rand_radius)) * normal
+		);
 }
 
 float total_area(in area_light light)
@@ -396,23 +439,25 @@ bool intersect_sphere(in sphere sph, in ray r
 	}
 	
 	discriminant = sqrt(discriminant);
-	
-	float t0 = b + discriminant;
 	float t1 = b - discriminant;
+	//не создаётся t0, расчитывается при необходимости
 	
 	if (t1 > epsilon)
 	{
 		t = t1;
 	} 
-	else if (t0 > epsilon)
+	else 
 	{
-		t = t0;
-	} 
+		t1 = b + discriminant;
+		if (t1 > epsilon)
+		{
+			t = t1;
+		} 
 		else 
 		{	
 			return false;
 		}
-		
+	}	
 	
 	/*
 	vec3 oc = r.origin - sph.center;
@@ -532,8 +577,11 @@ bool intersect_area_light(in area_light light, in ray r, out float t)
 
 		float u = dot(m - light.ul, light.ur - light.ul);
 		if (
-			u < epsilon ||
+			u < epsilon 
+			
+			||
 			u > light.dot_edge0
+			
 			)
 		{
 			//12* 1/
@@ -544,13 +592,23 @@ bool intersect_area_light(in area_light light, in ray r, out float t)
 		//2dot
 		//= 4dot 3* 1/ => 15* 1/
 		//very good rect intersection code
+		
+		/*
+		tri
+		if(u > 0 && v > 0 && u + v < 1)
+		
+		rect
+		if(u > 0 && v > 0 && u < 1 && v < 1)
+		*/
 
 		/*
 		if (u >= epsilon && v >= epsilon &&
 			u <= light.dot_edge0 && v <= light.dot_edge1)
 			*/
 		if (v >= epsilon &&
-			v <= light.dot_edge1)
+			v <= light.dot_edge1			
+			// (u+v) <= (light.dot_edge1 + light.dot_edge0)*0.5
+			)
 		{
 			t = temp_t;
 			return true;	
@@ -559,6 +617,23 @@ bool intersect_area_light(in area_light light, in ray r, out float t)
 
 	return false;
 }
+
+/*
+tri
+
+   Vector p = r.point(t);	 //m
+   double u = u0 + (p & ku);
+   double v = v0 + (p & kv);
+   //9*
+
+   if(u > 0 && v > 0 && u + v < 1)
+      return true;
+   else
+   {
+      STAT(TriangleTestMisses++);
+      return false;
+   }
+*/
 
 /****************************************************************************************************
  *
@@ -732,7 +807,7 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 	if (falloff_at_light > 0.0 && falloff_at_current_point > 0.0)
 	{
 		
-		float dist = distance(position, position_on_light_source);
+		float dist = distance(position, position_on_light_source);  //12151 pass/30s  vs 12116 если 1/ 1* /=>*
 		
 		ray r = { position, to_light_source / dist };
 		intersection inter = intersect_scene(r);
@@ -741,9 +816,10 @@ vec3 sample_light_source(in vec3 position, in vec3 normal, in vec3 brdf, inout v
 		if (inter.object_type == object_type_area_light)
 		{
 			//float area = total_area(scene_light);
-			float area = scene_light.area;			
+			//float area = scene_light.area;			
 			
-			float solid_angle = (falloff_at_light * area) / (dist * dist * dist * dist);
+			//float solid_angle = (falloff_at_light * area) / (dist * dist * dist * dist);
+			float solid_angle = (falloff_at_light * scene_light.area) / (dist * dist * dist * dist);
 			
 			
 			//float solid_angle = (falloff_at_light * area) / length(position_on_light_source - position);
@@ -774,7 +850,8 @@ vec3 trace()
 	// so that our final render doesn't look skewed or stretched when the
 	// resolution changes.
 	float aspect_ratio = push_constants.resolution.x / push_constants.resolution.y;
-	vec2 uv = gl_FragCoord.xy / push_constants.resolution;
+	//vec2 uv = gl_FragCoord.xy / push_constants.resolution;
+	vec2 uv = gl_FragCoord.xy * push_constants.resolution1;
 	
 	/*
 	vec2 uv = (gl_FragCoord.xy / push_constants.resolution) * 2.0 - 1.0;
@@ -827,8 +904,9 @@ vec3 trace()
 		// By jittering the uv-coordinates a tiny bit here, we get 
 		// "free" anti-aliasing.
 		vec2 jitter = { gpu_rnd(seed), gpu_rnd(seed) };
-		jitter = jitter * 2.0 - 1.0;
-		uv += (jitter / push_constants.resolution) * anti_aliasing;
+		jitter += jitter - 1.0;
+		//uv += (jitter / push_constants.resolution) * anti_aliasing;
+		uv += (jitter * push_constants.resolution1) * anti_aliasing;
 		
 		vec3 rd = lens_radius * vec3(random_on_disk(seed), 0.0);
 		vec3 lens_offset = look_at * vec3(rd.xy, 0.0);
@@ -870,13 +948,16 @@ vec3 trace()
 			}
 			else if (inter.object_type == object_type_area_light)
 			{
+				/*
 				if (next_event_estimation && i == 0) 
 				{
 					// Next event estimation - do nothing here!
 					// ...unless it's the first bounce.
 					color += scene_light.intensity * accumulated;
 				}
-				else {
+				else
+				*/
+				{
 					color += scene_light.intensity * accumulated;
 				}
 				break;
@@ -904,7 +985,7 @@ vec3 trace()
 				float seed_a = gpu_rnd(seed);
 				float seed_b = gpu_rnd(seed);
 				
-				r.direction = (cos_weighted_hemisphere(inter.normal, seed_a, seed_b));
+				r.direction = (cos_weighted_hemisphere(inter.normal, PI2 * seed_a, seed_b));
 				
 				float cos_theta = 
 				max(0.0, 
@@ -917,7 +998,7 @@ vec3 trace()
 					vec3 brdf = mtl.reflectance * PI1;
 					accumulated *= PI2 * brdf * cos_theta;
 
-					if (next_event_estimation)
+					// if (next_event_estimation)
 					{	
 						color += 
 						accumulated * 
@@ -930,12 +1011,117 @@ vec3 trace()
 				accumulated *= mtl.reflectance;
 				r.direction =  reflect(inter.incident, inter.normal);
 			}
+#if EXPERIMENTAL
+			else				
+			if (mtl.type == material_type_dielectric)
+			{
+				vec3 nrm = inter.normal;
+				
+				//accumulated *= mtl.reflectance;
+				
+				// specular refraction
+				float ln = dot(nrm, r.direction);
+				float eta = 1.5220;
+
+				// Cauchy's equation (Hard crown glass K5 with exaggerated abberation)
+					
+				//if (FullSpectrum) eta += -0.15 + wl;
+
+				//float R0 = ((eta - 1.0) * (eta - 1.0)) / ((eta + 1.0) * (eta + 1.0));
+				//float R0 = (eta*(eta - 2.0) + 1.0) / (eta*(eta + 2.0) + 1.0);
+				
+				//float etaeta = eta*eta;
+				//float R0 = (etaeta - eta - eta  + 1.0) / (etaeta + eta + eta + 1.0);
+				//float R0 = (eta*eta - eta - eta  + 1.0) / (eta*eta + eta + eta + 1.0);
+				//float R0 = (eta*(eta - 2)  + 1.0) / (eta*(eta + 2) + 1.0);
+
+				if (ln < 0.0)
+				{
+					// in
+					float c = 1.0 + ln;
+
+					float cc = c*c;
+					float R0 = (eta*(eta - 2)  + 1.0) / (eta*(eta + 2) + 1.0);
+					float Re = R0 + (1.0 - R0) * cc * cc * c;
+					
+					float P = (Re + 1.0)* 0.5;
+
+					if (gpu_rnd(seed) < P)
+					{
+						accumulated *= Re / P;
+						
+						r.origin = inter.position + inter.normal * epsilon;
+						r.direction = reflect(r.direction, nrm);
+					}
+					else
+					{
+							//prev_col *= 2;
+							accumulated += accumulated;
+							
+						r.origin = inter.position - inter.normal * epsilon;
+						r.direction = refract(r.direction, nrm, 1.0 / eta);
+				
+						//useSpectrum=true;
+					}
+				}
+				else
+				{
+					// out
+					//float cos2t = 1.0 - etaeta * (1.0 - ln * ln);
+					float cos2t = 1.0 - eta*eta * (1.0 - ln * ln);
+					if (cos2t < 0.0)
+					{
+						r.origin = inter.position - inter.normal * epsilon;
+						r.direction = reflect(r.direction, -nrm);
+						//total = true;
+					}
+					else
+					{
+						float c = 1.0 - ln;
+						
+					float cc = c*c;
+					
+					float R0 = (eta*(eta - 2)  + 1.0) / (eta*(eta + 2) + 1.0);
+					float Re = R0 + (1.0 - R0) * cc * cc * c;
+					
+						float P = (Re + 1.0) * 0.5;
+
+						if (gpu_rnd(seed) < P)
+						{
+							accumulated *= Re / P;
+							
+							r.origin = inter.position - inter.normal * epsilon;
+							r.direction = reflect(r.direction, -nrm);
+						}
+						else
+						{
+							//prev_col *= 2;
+							accumulated += accumulated;
+							
+							r.origin = inter.position + inter.normal * epsilon;
+							r.direction = refract(r.direction, -nrm, eta);
+				
+							//useSpectrum=true;
+						}
+					}
+				}
+			
+		}
+#endif
+
+
+
 		}
 
 		final += color; 
 	}
 
+
+#if number_of_iterations>1	
 	return final / float(number_of_iterations);
+#else
+	return final;
+#endif
 }
 
 void main()
@@ -945,7 +1131,8 @@ void main()
 	// Perform gamma correction.
 	trace_color = pow(trace_color, vec3(gamma));
 
-	vec2 uv = gl_FragCoord.xy / push_constants.resolution;
+	//vec2 uv = gl_FragCoord.xy / push_constants.resolution;
+	vec2 uv = gl_FragCoord.xy * push_constants.resolution1;
 	vec3 prev_frame = texture(u_image, uv).rgb;
 	vec3 curr_frame = trace_color;
 

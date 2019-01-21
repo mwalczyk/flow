@@ -17,3 +17,9 @@
 * --prefix
 * more and more speed (vs 20 sep ver  415 vs 387 pass/s  6.7%)
 * --kernel - kernel file name(for tests)
+
+9 oct 18
+* some speedups
+
+16 dec 18
+* glass - dielectric
