@@ -5,19 +5,25 @@
 #include <chrono>
 #include <functional>
 
-#define NOMINMAX
-#define GLFW_EXPOSE_NATIVE_X11
-#include "glfw3.h"
-#include "glfw3native.h"
-
-#define VK_USE_PLATFORM_XLIB_KHR
+#if defined(_WIN32)
+	#define VK_USE_PLATFORM_WIN32
+#else
+	#define VK_USE_PLATFORM_XCB_KHR
+#endif
 #include "vulkan/vulkan.hpp"
+
+#define NOMINMAX
+#include "glfw3.h"
 
 #ifdef _DEBUG
 #define LOG_DEBUG(x) std::cout << x << "\n"
 #else
 #define LOG_DEBUG(x) 
 #endif
+
+// Steps:
+// Install packages: `sudo apt install libxcb1-dev xorg-dev`
+// Make sure the Vulkan SDK (greater than 1.1.82.0) is installed (see https://github.com/KhronosGroup/Vulkan-Hpp/issues/266)
 
 struct alignas(8) PushConstants
 {
@@ -115,6 +121,9 @@ public:
 		glfwTerminate();
 	}
 
+	Application(const Application& other) = delete;
+	Application& operator=(const Application& other) = delete;
+
 	static void on_window_resized(GLFWwindow* window, int width, int height) 
 	{
 		Application* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
@@ -203,7 +212,10 @@ public:
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 		window = glfwCreateWindow(width, height, name.c_str(), nullptr, nullptr);
-
+		if(window == nullptr) 
+		{
+			throw std::runtime_error("Error creating GLFW window");
+		}
 		glfwSetWindowUserPointer(window, this);
 		glfwSetWindowSizeCallback(window, on_window_resized);
 		glfwSetCursorPosCallback(window, on_cursor_moved);
@@ -212,16 +224,26 @@ public:
 	void initialize_instance()
 	{
 		std::vector<const char*> layers;
-		std::vector<const char*> extensions{ VK_EXT_DEBUG_REPORT_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_XLIB_SURFACE_EXTENSION_NAME };
-#ifdef _DEBUG
-		layers.push_back("VK_LAYER_LUNARG_standard_validation");
+		std::vector<const char*> extensions{ VK_EXT_DEBUG_REPORT_EXTENSION_NAME };
+#if _DEBUG
+		// TODO: switch to VK_LAYER_KHRONOS_validation
+		layers.push_back("VK_LAYER_LUNARG_standard_validation"); 
 #endif
-		
+		// Add any instance-level extensions required by GLFW (based on current windowing environment, etc.)
+		uint32_t glfw_extensions_count = 0;
+		const char ** instance_extensions_buffer = glfwGetRequiredInstanceExtensions(&glfw_extensions_count);
+		for(size_t i = 0; i < glfw_extensions_count; ++i) 
+		{
+			extensions.push_back(instance_extensions_buffer[i]);
+			std::cout << "Adding extension required by GLFW: " << instance_extensions_buffer[i] << std::endl;
+		}
+
 		auto application_info = vk::ApplicationInfo{ name.c_str(), VK_MAKE_VERSION(1, 0, 0), name.c_str(), VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_1 };
 
 		instance = vk::createInstanceUnique(vk::InstanceCreateInfo{ {}, &application_info, static_cast<uint32_t>(layers.size()), layers.data(), static_cast<uint32_t>(extensions.size()), extensions.data() });
 
-#ifdef _DEBUG
+#if _DEBUG
+		// TODO: check out VK_EXT_DEBUG_UTILS_EXTENSION_NAME
 		auto dynamic_dispatch_loader = vk::DispatchLoaderDynamic{ instance.get() };
 		auto debug_report_callback_create_info = vk::DebugReportCallbackCreateInfoEXT{ vk::DebugReportFlagBitsEXT::eError | vk::DebugReportFlagBitsEXT::eWarning, debug_callback };
 
@@ -266,9 +288,13 @@ public:
 
 	void initialize_surface()
 	{	
-		auto surface_create_info = vk::XlibSurfaceCreateInfoKHR{ {}, nullptr, glfwGetX11Window(window) };
+		LOG_DEBUG("Trying to initialize surface...");
 
-		surface = instance->createXlibSurfaceKHRUnique(surface_create_info);
+		VkSurfaceKHR temp_surface;
+		glfwCreateWindowSurface(instance.get(), window, nullptr, &temp_surface);
+
+		surface = vk::UniqueSurfaceKHR{ temp_surface };
+		LOG_DEBUG("Created window surface");
 	}
 
 	void initialize_swapchain()
@@ -448,7 +474,7 @@ public:
 	void initialize_pipelines()
 	{
 		// First, load all of the shader modules
-		const std::string path_prefix = "";
+		const std::string path_prefix = "../flow/";
 		auto vs_module_quad = load_spv_into_module(device, path_prefix + "quad.spv");
 		auto fs_module_pathtrace = load_spv_into_module(device, path_prefix + "pathtrace.spv");
 		auto fs_module_composite = load_spv_into_module(device, path_prefix + "composite.spv");
@@ -627,10 +653,9 @@ public:
 		double ypos;
 		glfwGetCursorPos(window, &xpos, &ypos);
 
-		const vk::ClearValue clear_values[] = {
-			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }, // TODO: is this value needed? 
-			std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f }
-		};
+		vk::ClearValue clear_values[2];
+		clear_values[0].color = vk::ClearColorValue(std::array<float, 4>({ 0.0f, 0.0f, 0.0f, 1.0f })); // TODO: is this value needed? 
+		clear_values[1].color = vk::ClearColorValue(std::array<float, 4>({ 0.0f, 0.0f, 0.0f, 1.0f }));
 
 		int frame_offset = (total_frames_elapsed % 2 == 0) ? 0: 1;
 
