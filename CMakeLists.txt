@@ -22,3 +22,5 @@ find_package(Vulkan REQUIRED)
 target_link_libraries(Flow Vulkan::Vulkan)
 target_link_libraries(Flow glfw ${GLFW_LIBRARIES})
 
+# TODO: figure out how to add a pre-build step to compile shaders
+#add_custom_command(TARGET Flow PRE_BUILD COMMAND source "${CMAKE_CURRENT_SOURCE_DIR}/flow/compile_shaders.sh") 
