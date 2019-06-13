@@ -485,7 +485,7 @@ public:
 	void initialize_pipelines()
 	{
 		// First, load all of the shader modules
-		const std::string path_prefix = "../flow/";
+		const std::string path_prefix = "../flow/shaders/";
 		auto vs_module_quad = load_spv_into_module(device, path_prefix + "quad.spv");
 		auto fs_module_pathtrace = load_spv_into_module(device, path_prefix + "pathtrace.spv");
 		auto fs_module_composite = load_spv_into_module(device, path_prefix + "composite.spv");

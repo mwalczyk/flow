@@ -1,6 +1,9 @@
 # CMake artifacts, etc.
 build
 
+# GLFW
+third_party/*
+
 # SPIR-V shaders
 flow/shaders/*.spv
 

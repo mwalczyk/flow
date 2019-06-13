@@ -15,19 +15,28 @@ As such, there are two separate graphics pipelines - one that runs the main path
 Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
 ## Tested On
-- Windows 10 Pro, Ubuntu 18.04
+- Ubuntu 18.04
 - NVIDIA GeForce GTX 1070
 - Vulkan SDK `1.1.106.0`
 
 ## To Build
 1. Clone this repo.
-2. Inside the repo, create a new folder named `third_party`.
-3. Download the [Vulkan SDK for Windows](https://vulkan.lunarg.com/sdk/home#windows). Make sure the `VK_SDK_PATH` environment
-   variable is defined on your system.
-4. Download the [GLFW pre-compiled binaries](http://www.glfw.org/download.html) (64-bit Windows) and place inside the `third_party` directory. Rename this folder to `glfw`.
-5. Optionally, run `vkstarter/compile.bat` to convert the included `GLSL` shaders to `SPIR-V`. This will be run automatically as a pre-build event by Visual Studio.
-6. Open the Visual Studio 2015 solution file.
-7. Build the included project.
+2. Clone GLFW (used for windowing): `git clone https://github.com/glfw/glfw.git third_party/glfw`
+3. Download the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for your OS. Make sure the `VULKAN_SDK` environment variable is defined on your system: `echo $VULKAN_SDK`
+4. Compile the included shader files using `glslangValidator`:
+```
+cd flow
+sh ./compile_shaders.sh
+```
+4. Finally, from the root directory, run the following commands:
+```
+mkdir build
+cd build
+cmake ..
+make
+
+./Flow
+```
 
 ## To Do
 - [ ] Tone mapping and exposure adjustment
