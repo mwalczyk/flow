@@ -76,12 +76,12 @@ sphere spheres[] =
 plane planes[] = 
 {
 	// Monochrome
-	{ -z_axis,  z_axis * 5.50f, 4 }, // Back
+	{ -z_axis,  z_axis * 5.50f, 2 }, // Back
 	{  z_axis, -z_axis * 8.50f, 2 }, // Front
-	{ -x_axis,  x_axis * 4.50f, 3 }, // Right
-	{  x_axis, -x_axis * 6.50f, 6 }, // Left
+	{ -x_axis,  x_axis * 4.50f, 2 }, // Right
+	{  x_axis, -x_axis * 6.50f, 2 }, // Left
 	{  y_axis, -y_axis * 7.00f, 2 }, // Top
-	{ -y_axis,  y_axis * 0.00f, 15 }  // Bottom
+	{ -y_axis,  y_axis * 0.00f, 2 }  // Bottom
 
 	// Colored
 	// { -z_axis,  z_axis * 5.50f, 5 }, // Back
