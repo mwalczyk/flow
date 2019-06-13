@@ -1,7 +1,7 @@
 # flow
 🔮 A GPU-based progressive path tracer written in Vulkan. 
 
-<p>
+<p align="center">
   <img src="https://github.com/mwalczyk/flow/blob/master/screenshots/screenshot.png" alt="screenshot" width="300" height="auto"/>
 </p>
 
@@ -15,10 +15,9 @@ As such, there are two separate graphics pipelines - one that runs the main path
 Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
 ## Tested On
-- Windows 10 Pro
+- Windows 10 Pro, Ubuntu 18.04
 - NVIDIA GeForce GTX 1070
-- Vulkan SDK `1.1.92.1`
-- Visual Studio 2017
+- Vulkan SDK `1.1.106.0`
 
 ## To Build
 1. Clone this repo.
