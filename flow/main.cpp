@@ -949,7 +949,7 @@ public:
 				const float milliseconds = nanoseconds / 1e6f;
 
 				std::stringstream ss;
-				ss << "rtx_raytracing " << " [" << milliseconds << " frame time (ms)]";
+				ss << "flow " << " [" << milliseconds << " frame time (ms)]";
 
 				glfwSetWindowTitle(window, ss.str().c_str());
 			}
