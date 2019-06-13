@@ -21,8 +21,11 @@ Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 
 ## To Build
 1. Clone this repo.
-2. Clone GLFW (used for windowing): `git clone https://github.com/glfw/glfw.git third_party/glfw`
-3. Download the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for your OS. Make sure the `VULKAN_SDK` environment variable is defined on your system: `echo $VULKAN_SDK`
+2. Clone GLFW (used for windowing): 
+```
+git clone https://github.com/glfw/glfw.git third_party/glfw
+```
+3. Download the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for your OS. Make sure the `VULKAN_SDK` environment variable is defined on your system.
 4. Compile the included shader files using `glslangValidator`:
 ```
 cd flow
@@ -49,8 +52,6 @@ make
 - [ ] Screenshot utility
 
 ### License
-
-:copyright: The Interaction Department 2018
 
 [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/)
 
