@@ -20,10 +20,10 @@ Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 - Vulkan SDK `1.1.106.0`
 
 ## To Build
-1. Clone this repo.
-2. Clone GLFW (used for windowing): 
+1. Clone this repo and initialize submodules (GLFW): 
 ```shell
-git clone https://github.com/glfw/glfw.git third_party/glfw
+git submodule init
+git submodule update
 ```
 3. Download the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for your OS. Make sure the `VULKAN_SDK` environment variable is defined on your system.
 4. Compile the included shader files using `glslangValidator`:
