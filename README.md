@@ -22,16 +22,16 @@ Built on top of [vkstarter](https://github.com/mwalczyk/vkstarter).
 ## To Build
 1. Clone this repo.
 2. Clone GLFW (used for windowing): 
-```
+```shell
 git clone https://github.com/glfw/glfw.git third_party/glfw
 ```
 3. Download the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for your OS. Make sure the `VULKAN_SDK` environment variable is defined on your system.
 4. Compile the included shader files using `glslangValidator`:
-```
+```shell
 sh ./flow/compile_shaders.sh
 ```
 4. Finally, from the root directory, run the following commands:
-```
+```shell
 mkdir build
 cd build
 cmake ..
