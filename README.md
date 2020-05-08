@@ -1,8 +1,8 @@
-# flow
+# Flow
 🔮 A GPU-based progressive path tracer written in Vulkan. 
 
 <p align="center">
-  <img src="https://github.com/mwalczyk/flow/blob/master/screenshots/screenshot.png" alt="screenshot" width="300" height="auto"/>
+  <img src="https://raw.githubusercontent.com/mwalczyk/flow/master/screenshots/screenshot.png" alt="screenshot" width="300" height="auto"/>
 </p>
 
 ## Description
