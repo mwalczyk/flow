@@ -53,15 +53,12 @@ sphere spheres[] =
 {
 	// Light source 
 	{ 0.75f, vec3( -2.00f, -4.00f,  0.00f), 8 },
-	// old: { 1.00f, vec3( 0.00f, -4.50f,  3.00f), 8 },
 
 	// Spheres in the middle
 	{ 1.500f, vec3( 0.00f, -1.500f,  0.000f), 1 },
 	{ 0.750f, vec3( 0.00f, -0.750f, -2.250f), 4 },
     { 0.375f, vec3( 0.00f, -0.375f, -3.375f), 5 },
 	{ 0.100f, vec3( 0.00f, -0.100f, -3.850f), 6 },
-
-	// { 0.30f, vec3(-0.60f, -0.30f, -1.80f), 1 },
 
 	// // Line of spheres on the left
 	{ 0.30f, vec3(-3.00f, -0.30f, -2.00f),  9 },
@@ -75,72 +72,31 @@ sphere spheres[] =
 
 plane planes[] = 
 {
-	// Monochrome
-	{ -z_axis,  z_axis * 5.50f, 2 }, // Back
+	// Colored
+	{ -z_axis,  z_axis * 5.50f, 5 }, // Back
 	{  z_axis, -z_axis * 8.50f, 2 }, // Front
-	{ -x_axis,  x_axis * 4.50f, 2 }, // Right
-	{  x_axis, -x_axis * 6.50f, 2 }, // Left
+	{ -x_axis,  x_axis * 4.50f, 7 }, // Right
+	{  x_axis, -x_axis * 4.50f, 4 }, // Left
 	{  y_axis, -y_axis * 7.00f, 2 }, // Top
 	{ -y_axis,  y_axis * 0.00f, 2 }  // Bottom
-
-	// Colored
-	// { -z_axis,  z_axis * 5.50f, 5 }, // Back
-	// {  z_axis, -z_axis * 8.50f, 2 }, // Front
-	// { -x_axis,  x_axis * 4.50f, 7 }, // Right
-	// {  x_axis, -x_axis * 4.50f, 4 }, // Left
-	// {  y_axis, -y_axis * 7.00f, 2 }, // Top
-	// { -y_axis,  y_axis * 0.00f, 2 }  // Bottom
 };
 
-quad quads[] =
-{
-	build_quad(7.00f, 1.00f, vec3(3.00f, -0.60f, 0.00f), y_axis, to_radians(90.0f),  9),
-	build_quad(7.00f, 1.00f, vec3(3.00f, -1.70f, 0.00f), y_axis, to_radians(90.0f), 12),
-	build_quad(7.00f, 1.00f, vec3(3.00f, -2.80f, 0.00f), y_axis, to_radians(90.0f), 15),
-};
+// These intersection routines are quite slow, so let's disable them for now:
+//
+// #define QUADS
+// #define BOXES
+//
+// quad quads[] =
+// {
+// 	build_quad(7.00f, 1.00f, vec3(3.00f, -0.60f, 0.00f), y_axis, to_radians(90.0f),  9),
+// 	build_quad(7.00f, 1.00f, vec3(3.00f, -1.70f, 0.00f), y_axis, to_radians(90.0f), 12),
+// 	build_quad(7.00f, 1.00f, vec3(3.00f, -2.80f, 0.00f), y_axis, to_radians(90.0f), 15),
+// };
 
-#define N 27
-box[N] build_random_scene()
-{
-	box boxes[N];
-
-	int i = 0;
-	int cube_rt = 3;
-
-	for (uint x = 0u; x < cube_rt; ++x)
-	{
-		for (uint y = 0u; y < cube_rt; ++y)
-		{
-			for (uint z = 0u; z < cube_rt; ++z)
-			{
-				if (x == 1 && y == 1 && z == 1) continue;
-
-				float pct_x = (x) / float(cube_rt - 1.0f);
-				float pct_y = (y) / float(cube_rt - 1.0f);
-				float pct_z = (z) / float(cube_rt - 1.0f);
-
-				const vec3 box_size = vec3(1.0f);
-				const float cluster_size = 3.0f;
-				const vec3 center = vec3(pct_x, pct_y, pct_z) * cluster_size - cluster_size * 0.5f;
-
-				boxes[i] = build_box(box_size, center - y_axis * 2.0f, 17);
-
-				i++;
-			}
-		}
-
-	}
-	
-	return boxes;
-}
-
-// Remember: negative y is up, positive z is forward
-box boxes[] =
-{
-	build_box(vec3(2.0f, 4.0f, 2.0f), -y_axis * 2.0f, 3)
-};
-
-//#define BOXES
+// box boxes[] =
+// {
+// 	build_box(vec3(2.0f, 4.0f, 2.0f), -y_axis * 2.0f, 3)
+// };
 
 intersection intersect_scene(in ray r)
 {
@@ -381,9 +337,6 @@ vec3 trace()
             	material mtl = materials[inter.material_index];
 
                 const vec3 hit_location = r.origin + r.direction * inter.t;
-                const float m = 0.3f; 
-                const float o = 0.8f;
-                const float s = 20.0f;
 
                 // When using explicit light sampling, we have to account for a number of edge cases:
                 //
@@ -397,10 +350,9 @@ vec3 trace()
                     previous_material_type == material_type_metallic) && 
                     mtl.is_light) 
                 {
-                	const vec3 light_color = white;//rainbow(hit_location.x * m + o);
-                	// rainbow(floor((hit_location.x * m + o) * s) / s);
+                	const vec3 light_color = white;
 
-                    radiance += throughput * light_color;//mtl.reflectance;
+                    radiance += throughput * light_color;
                     break;   
                 }
 
@@ -441,9 +393,8 @@ vec3 trace()
                         const float pdf = max(0.0f, dot(to_light, normal_towards_light)) * omega * one_over_pi;
 
                         const vec3 light_color = white * 5.0f;
-                        //rainbow(floor((secondary_inter.position.x * m + o) * s) / s) * 5.0f;
 
-                        radiance += throughput * light_color * pdf;//secondary_mtl.reflectance * pdf; 
+                        radiance += throughput * light_color * pdf; 
                     }
 
                     r.direction = normalize(cos_weighted_hemisphere(inter.normal, gpu_rnd(seed), gpu_rnd(seed)));
@@ -471,7 +422,7 @@ vec3 trace()
                     //
                     // where n is the "outer" medium and n' is the "inner" (i.e. the medium
                     // that the ray is traveling into)
-                    const float ior = mtl.roughness;// 1.0f / 1.91f;
+                    const float ior = mtl.roughness;
 
                     const vec3 normal = inter.normal;
 
@@ -479,8 +430,6 @@ vec3 trace()
 
                     float ni_over_nt;
                     float cosine;
-
-                    //r.direction = normalize(r.direction);
 
                     if (dot(normal, r.direction) > 0.0f) 
                     {
